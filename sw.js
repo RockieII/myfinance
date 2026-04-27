@@ -1,4 +1,4 @@
-const CACHE_NAME = 'myfinance-v1';
+const CACHE_NAME = 'myfinance-v2';
 
 const SHELL = [
   './',
