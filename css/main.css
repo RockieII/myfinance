@@ -184,3 +184,136 @@ input, select, textarea { font: inherit; color: inherit; }
 .fs-12 { font-size: 12px; }
 .fs-20 { font-size: 20px; }
 .fs-24 { font-size: 24px; }
+
+/* KPI Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.kpi-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+/* Section titles */
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-dim);
+  margin: 20px 0 8px;
+}
+
+/* Toggle buttons (expense/income switch) */
+.tab-toggle {
+  display: flex;
+  background: var(--bg-elev);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.toggle-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: background .15s, color .15s;
+}
+.toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Small button variant */
+.btn-sm { padding: 7px 14px; font-size: 13px; }
+
+/* Icon button (edit/delete) */
+.btn-icon {
+  padding: 4px;
+  color: var(--text-dim);
+  font-size: 16px;
+  transition: color .15s;
+}
+.btn-icon:hover { color: var(--text); }
+
+/* Icon picker grid */
+.icon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.icon-pick {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--bg-elev-2);
+  border: 2px solid transparent;
+  font-size: 18px;
+  color: var(--text-dim);
+  transition: border-color .15s;
+}
+.icon-pick.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Filter row */
+.filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.filter-select {
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+/* Chart sections */
+.chart-section {
+  margin-bottom: 20px;
+}
+.chart-section .card {
+  padding: 12px;
+}
+
+/* Desktop sidebar layout */
+@media (min-width: 769px) {
+  .tabbar {
+    top: 0; bottom: 0; left: 0;
+    width: 200px; height: 100vh;
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(5, auto);
+    align-content: start;
+    padding-top: calc(var(--top-h) + env(safe-area-inset-top) + 16px);
+    padding-bottom: 0;
+    border-top: none;
+    border-right: 1px solid var(--border);
+  }
+  .tab {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 12px 20px;
+    font-size: 14px;
+    gap: 10px;
+  }
+  body {
+    padding-left: 200px;
+    padding-bottom: 0;
+  }
+  .topbar {
+    left: 200px;
+  }
+  .toast {
+    bottom: 20px;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .filter-row {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

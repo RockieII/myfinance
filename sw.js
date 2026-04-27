@@ -6,6 +6,14 @@ const SHELL = [
   './manifest.webmanifest',
   './css/main.css',
   './js/app.js',
+  './js/config.js',
+  './js/db.js',
+  './js/auth.js',
+  './js/views/dashboard.js',
+  './js/views/transactions.js',
+  './js/views/stocks.js',
+  './js/views/categories.js',
+  './js/views/settings.js',
   './icons/icon.svg',
 ];
 
@@ -28,8 +36,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Network-first for CDN resources and API calls
-  if (url.host !== location.host || url.pathname.includes('/rest/') || url.pathname.includes('/auth/')) {
+  // Network-first for CDN, Supabase API, and Finnhub API
+  if (url.host !== location.host || url.host.includes('supabase') || url.host.includes('finnhub')) {
     event.respondWith(
       fetch(event.request).catch(() => caches.match(event.request))
     );
