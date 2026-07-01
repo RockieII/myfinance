@@ -5,7 +5,7 @@
 import * as DB from '../db.js';
 import { formatMoney } from '../format.js';
 import { openSheet } from '../sheet.js';
-import { getProfiles, getActiveProfile, scopeToActiveProfile } from '../profiles.js';
+import { getProfiles, getProfile } from '../profiles.js';
 
 let transactions = [];
 let categories = [];
@@ -24,9 +24,8 @@ export async function renderTransactions(container) {
 }
 
 function draw(container) {
-  const scoped = scopeToActiveProfile(transactions);   // header profile filter (All = everything)
-  const months = getUniqueMonths(scoped);
-  const filtered = applyFilters(scoped);
+  const months = getUniqueMonths(transactions);
+  const filtered = applyFilters(transactions);
 
   container.innerHTML = `
     <div class="flex-between mb-12">
@@ -138,13 +137,14 @@ function txRow(tx) {
   const catIcon = tx.categories?.icon || 'ph-tag';
   const catColor = tx.categories?.color || 'var(--accent)';
   const accName = tx.accounts?.name || '';
+  const prof = tx.profile_id ? getProfile(tx.profile_id) : null;
 
   return `
     <div class="row" style="padding:11px 16px">
       <i class="ph ${catIcon}" style="font-size:18px;color:${catColor};width:24px;text-align:center;flex-shrink:0"></i>
       <div style="flex:1;min-width:0">
         <div class="fw-600" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.description || catName}</div>
-        <div class="fs-12 text-dim">${tx.date} &middot; ${accName}</div>
+        <div class="fs-12 text-dim">${tx.date} &middot; ${accName}${prof ? ` &middot; <span style="color:${prof.color}">●</span> ${prof.name}` : ''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div class="fw-600 money ${colorClass}">${sign}${formatMoney(tx.amount)}</div>
@@ -162,7 +162,7 @@ function openTxForm(container, editingId, tx) {
   const currentType = tx.type || 'expense';
   const filteredCats = categories.filter(c => c.type === currentType);
   const profiles = getProfiles();
-  const defaultProfile = tx.profile_id || (editingId ? '' : getActiveProfile());
+  const defaultProfile = tx.profile_id || '';
 
   const { el, close } = openSheet(`
     <h3>${editingId ? 'Edit' : 'New'} Transaction</h3>

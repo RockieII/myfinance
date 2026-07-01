@@ -53,11 +53,6 @@ input, select, textarea { font: inherit; color: inherit; }
 .title-row { display: flex; align-items: baseline; gap: 10px; padding: 0 16px; width: 100%; }
 .topbar h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .2px; color: var(--accent); }
 .tab-label { color: var(--text-dim); font-size: 13px; }
-.profile-switcher {
-  margin-left: auto; font-size: 13px; padding: 5px 10px; max-width: 45%;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface); color: var(--text); font-weight: 600;
-}
 
 /* Tab bar (mobile bottom) */
 .tabbar {
