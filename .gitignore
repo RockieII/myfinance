@@ -1,0 +1,7 @@
+# Inbox — project-scoped raw capture (working area; contents never committed)
+/Inbox/*
+!/Inbox/.gitkeep
+
+# Local governance files (d:\Projetos system) — not part of the public app repo
+CLAUDE.md
+STATE.md

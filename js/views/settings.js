@@ -3,6 +3,9 @@
 
 import * as DB from '../db.js';
 import { signOut } from '../auth.js';
+import { DEV_TOOLS } from '../config.js';
+import { generateTestData, wipeTestData } from '../seed-data.js';
+import { formatMoney } from '../format.js';
 
 let accounts = [];
 let editingId = null;
@@ -42,6 +45,16 @@ function draw(container) {
     <div class="card">
       <button class="btn btn-danger" id="signout-btn" style="width:100%">Sign Out</button>
     </div>
+
+    ${DEV_TOOLS ? `
+      <h3 class="section-title" style="margin-top:32px">Developer</h3>
+      <div class="card">
+        <div class="fs-12 text-dim mb-12">Fills your account with <strong>[TEST]</strong>-tagged dummy data
+          (3 accounts, 24 months, sample stocks). Wipe removes only tagged data — real records are never touched.</div>
+        <button class="btn btn-outline" id="gen-data-btn" style="width:100%">Generate test data</button>
+        <button class="btn btn-danger" id="wipe-data-btn" style="width:100%;margin-top:8px">Wipe test data</button>
+      </div>
+    ` : ''}
   `;
 
   // Add account
@@ -82,6 +95,40 @@ function draw(container) {
     await signOut();
     location.reload();
   });
+
+  // Developer: generate / wipe test data
+  if (DEV_TOOLS) {
+    const genBtn = container.querySelector('#gen-data-btn');
+    genBtn.addEventListener('click', async () => {
+      if (!confirm('Generate 24 months of [TEST] dummy data (accounts, transactions, stocks)?')) return;
+      genBtn.disabled = true;
+      const label = genBtn.textContent;
+      genBtn.textContent = 'Generating…';
+      try {
+        const r = await generateTestData();
+        showToast(`Added ${r.transactions} transactions, ${r.accounts} accounts, ${r.stocks} stocks`);
+        await renderSettings(container);
+      } catch (err) {
+        showToast('Generate failed: ' + err.message);
+        genBtn.disabled = false;
+        genBtn.textContent = label;
+      }
+    });
+
+    const wipeBtn = container.querySelector('#wipe-data-btn');
+    wipeBtn.addEventListener('click', async () => {
+      if (!confirm('Delete ALL [TEST] dummy data? Real records are not affected.')) return;
+      wipeBtn.disabled = true;
+      try {
+        const r = await wipeTestData();
+        showToast(`Wiped ${r.accounts} test accounts + ${r.stocks} stocks`);
+        await renderSettings(container);
+      } catch (err) {
+        showToast('Wipe failed: ' + err.message);
+        wipeBtn.disabled = false;
+      }
+    });
+  }
 }
 
 function accountRow(acc) {
@@ -162,6 +209,8 @@ function showForm(container, acc) {
   });
 }
 
+// (money formatting now lives in js/format.js)
+
 async function exportCSV() {
   try {
     const txs = await DB.getTransactionsWithDetails();
@@ -183,8 +232,4 @@ async function exportCSV() {
   } catch (err) {
     showToast('Export failed: ' + err.message);
   }
-}
-
-function formatMoney(amount, currency = 'EUR') {
-  return new Intl.NumberFormat('en', { style: 'currency', currency }).format(amount);
 }

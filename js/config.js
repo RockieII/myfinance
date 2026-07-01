@@ -7,3 +7,6 @@ export const FINNHUB_API_KEY = 'YOUR_FINNHUB_KEY';
 
 // Stock price cache duration in minutes
 export const STOCK_CACHE_MINUTES = 15;
+
+// Show the Developer tools panel (test-data generator) in Settings.
+export const DEV_TOOLS = true;

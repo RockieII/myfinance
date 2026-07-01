@@ -1,12 +1,17 @@
 // MyFinance — Dashboard View
-// KPI cards + Chart.js charts for financial overview.
+// A single-viewport (no-scroll) overview: net-worth hero, cash-flow strip,
+// top spending, and a compact net-worth trend. Details live behind a tap.
 
 import * as DB from '../db.js';
+import { formatMoney } from '../format.js';
+import { openSheet } from '../sheet.js';
 
 let chartInstances = [];
+const GRID = '#E2E6EC';
+const TICK = '#6B7280';
+const CAT_COLORS = ['#1E7F5C', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16'];
 
 export async function renderDashboard(container) {
-  // Destroy previous charts
   chartInstances.forEach(c => c.destroy());
   chartInstances = [];
 
@@ -20,229 +25,158 @@ export async function renderDashboard(container) {
   const priceMap = {};
   prices.forEach(p => { priceMap[p.ticker] = p.price; });
 
-  // Calculate KPIs
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7);
-  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
-
   const monthTx = transactions.filter(t => t.date.startsWith(currentMonth));
-  const prevMonthTx = transactions.filter(t => t.date.startsWith(prevMonth));
-
   const monthIncome = sumByType(monthTx, 'income');
   const monthExpense = sumByType(monthTx, 'expense');
-  const prevIncome = sumByType(prevMonthTx, 'income');
-  const prevExpense = sumByType(prevMonthTx, 'expense');
+  const net = monthIncome - monthExpense;
+  const savingsRate = monthIncome > 0 ? (net / monthIncome * 100) : 0;
 
-  // Account balances = initial_balance + income - expenses for each account
-  const accountBalances = accounts.map(acc => {
-    const accTx = transactions.filter(t => t.account_id === acc.id);
-    const income = sumByType(accTx, 'income');
-    const expense = sumByType(accTx, 'expense');
-    return { ...acc, balance: acc.initial_balance + income - expense };
+  const initialTotal = accounts.reduce((s, a) => s + parseFloat(a.initial_balance), 0);
+  const portfolioValue = stocks.reduce((s, st) => s + st.quantity * (priceMap[st.ticker] || st.purchase_price), 0);
+
+  // Net-worth series over the last 6 months (cumulative up to each month-end).
+  const months = getLastMonths(6);
+  const series = months.map(m => {
+    const upTo = transactions.filter(t => t.date.slice(0, 7) <= m);
+    return initialTotal + sumByType(upTo, 'income') - sumByType(upTo, 'expense') + portfolioValue;
   });
-  const totalBalance = accountBalances.reduce((s, a) => s + a.balance, 0);
+  const netWorth = series[series.length - 1];
+  const prev = series[series.length - 2] ?? netWorth;
+  const trendPct = prev ? ((netWorth - prev) / Math.abs(prev)) * 100 : 0;
+  const trendClass = trendPct >= 0 ? 'text-up' : 'text-down';
 
-  // Portfolio value
-  const portfolioValue = stocks.reduce((s, st) => {
-    const price = priceMap[st.ticker] || st.purchase_price;
-    return s + st.quantity * price;
-  }, 0);
-
-  const netWorth = totalBalance + portfolioValue;
-  const savingsRate = monthIncome > 0 ? ((monthIncome - monthExpense) / monthIncome * 100) : 0;
-  const prevSavingsRate = prevIncome > 0 ? ((prevIncome - prevExpense) / prevIncome * 100) : 0;
+  // Top spending this month.
+  const byCat = {};
+  monthTx.filter(t => t.type === 'expense').forEach(t => {
+    const name = t.categories?.name || 'Other';
+    byCat[name] = byCat[name] || { amount: 0, icon: t.categories?.icon || 'ph-tag' };
+    byCat[name].amount += parseFloat(t.amount);
+  });
+  const topCats = Object.entries(byCat).sort((a, b) => b[1].amount - a[1].amount).slice(0, 4);
+  const maxCat = topCats.length ? topCats[0][1].amount : 1;
 
   container.innerHTML = `
-    <!-- KPI Cards -->
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="fs-12 text-dim">Net Worth</div>
-        <div class="fs-20 fw-600">${fmt(netWorth)}</div>
+    <div class="dash">
+      <div class="hero card">
+        <div>
+          <div class="label">Net Worth</div>
+          <div class="hero-value money">${formatMoney(netWorth, 'EUR', 0)}</div>
+          <div class="hero-trend ${trendClass}">${trendPct >= 0 ? '▲' : '▼'} ${Math.abs(trendPct).toFixed(1)}% this month</div>
+        </div>
+        <div class="chart-box hero-spark"><canvas id="nw-spark"></canvas></div>
       </div>
-      <div class="kpi-card">
-        <div class="fs-12 text-dim">Total Balance</div>
-        <div class="fs-20 fw-600">${fmt(totalBalance)}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="fs-12 text-dim">This Month Income</div>
-        <div class="fs-20 fw-600 text-ok">${fmt(monthIncome)}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="fs-12 text-dim">This Month Expenses</div>
-        <div class="fs-20 fw-600 text-danger">${fmt(monthExpense)}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="fs-12 text-dim">Portfolio Value</div>
-        <div class="fs-20 fw-600">${fmt(portfolioValue)}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="fs-12 text-dim">Savings Rate</div>
-        <div class="fs-20 fw-600 ${savingsRate >= 0 ? 'text-ok' : 'text-danger'}">${savingsRate.toFixed(0)}%</div>
-        <div class="fs-12 text-dim">${trendArrow(savingsRate, prevSavingsRate)} vs last month</div>
-      </div>
-    </div>
 
-    <!-- Charts -->
-    <div class="chart-section">
-      <h3 class="section-title">Monthly Income vs Expenses</h3>
-      <div class="card"><canvas id="chart-monthly"></canvas></div>
-    </div>
+      <div class="strip">
+        <div class="stat"><span class="label">In</span><span class="val money text-up">${formatMoney(monthIncome, 'EUR', 0)}</span></div>
+        <div class="stat"><span class="label">Out</span><span class="val money text-down">${formatMoney(monthExpense, 'EUR', 0)}</span></div>
+        <div class="stat"><span class="label">Net</span><span class="val money ${net >= 0 ? 'text-up' : 'text-down'}">${net >= 0 ? '+' : ''}${formatMoney(net, 'EUR', 0)}</span></div>
+        <div class="stat"><span class="label">Savings</span><span class="val ${savingsRate >= 0 ? 'text-up' : 'text-down'}">${savingsRate.toFixed(0)}%</span></div>
+      </div>
 
-    <div class="chart-section">
-      <h3 class="section-title">Expense Breakdown (This Month)</h3>
-      <div class="card" style="max-width:400px;margin:0 auto"><canvas id="chart-categories"></canvas></div>
-    </div>
+      <div class="card topcats">
+        <div class="flex-between">
+          <span class="label">Spending · ${monthLabel(currentMonth)}</span>
+          <button class="link" id="see-all">See all ▸</button>
+        </div>
+        <div class="cat-bars">
+          ${topCats.length ? topCats.map(([name, c]) => `
+            <div class="cat-bar">
+              <i class="ph ${c.icon}"></i>
+              <div>
+                <div class="fs-12">${name}</div>
+                <div class="track"><div class="fill" style="width:${Math.max(6, c.amount / maxCat * 100)}%"></div></div>
+              </div>
+              <span class="amt">${formatMoney(c.amount, 'EUR', 0)}</span>
+            </div>
+          `).join('') : '<div class="empty">No spending this month.</div>'}
+        </div>
+      </div>
 
-    <div class="chart-section">
-      <h3 class="section-title">Net Worth Over Time</h3>
-      <div class="card"><canvas id="chart-networth"></canvas></div>
+      <div class="card trend">
+        <span class="label">Net worth · last 6 months</span>
+        <div class="chart-box"><canvas id="nw-chart"></canvas></div>
+      </div>
     </div>
   `;
 
-  // Render charts after DOM is ready
   setTimeout(() => {
-    initMonthlyChart(transactions);
-    initCategoryChart(monthTx);
-    initNetWorthChart(transactions, accounts, stocks, priceMap);
-  }, 0);
-}
-
-function initMonthlyChart(transactions) {
-  const months = getLast12Months();
-  const incomeData = months.map(m => sumByType(transactions.filter(t => t.date.startsWith(m)), 'income'));
-  const expenseData = months.map(m => sumByType(transactions.filter(t => t.date.startsWith(m)), 'expense'));
-
-  const ctx = document.getElementById('chart-monthly');
-  if (!ctx) return;
-  const chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: months.map(formatMonthLabel),
-      datasets: [
-        { label: 'Income', data: incomeData, backgroundColor: '#5bd89a', borderRadius: 4 },
-        { label: 'Expenses', data: expenseData, backgroundColor: '#ff5a7a', borderRadius: 4 },
-      ],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#8b97b3' } } },
-      scales: {
-        x: { ticks: { color: '#8b97b3' }, grid: { color: '#3a3a5c33' } },
-        y: { ticks: { color: '#8b97b3' }, grid: { color: '#3a3a5c33' } },
-      },
-    },
-  });
-  chartInstances.push(chart);
-}
-
-function initCategoryChart(monthTx) {
-  const expenses = monthTx.filter(t => t.type === 'expense');
-  const byCategory = {};
-  expenses.forEach(t => {
-    const name = t.categories?.name || 'Other';
-    byCategory[name] = (byCategory[name] || 0) + parseFloat(t.amount);
-  });
-
-  const labels = Object.keys(byCategory);
-  const data = Object.values(byCategory);
-  const colors = [
-    '#5C6BC0', '#ff5a7a', '#5bd89a', '#ffcc33', '#14b8a6',
-    '#f97316', '#a855f7', '#ec4899', '#6366f1', '#84cc16',
-  ];
-
-  const ctx = document.getElementById('chart-categories');
-  if (!ctx) return;
-  if (!labels.length) {
-    ctx.parentElement.innerHTML = '<div class="empty">No expenses this month.</div>';
-    return;
-  }
-  const chart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{ data, backgroundColor: colors.slice(0, labels.length), borderWidth: 0 }],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { position: 'bottom', labels: { color: '#8b97b3', padding: 12 } } },
-    },
-  });
-  chartInstances.push(chart);
-}
-
-function initNetWorthChart(transactions, accounts, stocks, priceMap) {
-  const months = getLast12Months();
-  const initialTotal = accounts.reduce((s, a) => s + parseFloat(a.initial_balance), 0);
-  const portfolioValue = stocks.reduce((s, st) => {
-    const price = priceMap[st.ticker] || st.purchase_price;
-    return s + st.quantity * price;
+    initSpark(series);
+    initTrend(months, series);
   }, 0);
 
-  // Cumulative balance up to each month
-  const netWorthData = months.map(m => {
-    const txUpToMonth = transactions.filter(t => t.date.slice(0, 7) <= m);
-    const income = sumByType(txUpToMonth, 'income');
-    const expense = sumByType(txUpToMonth, 'expense');
-    return initialTotal + income - expense + portfolioValue;
-  });
+  container.querySelector('#see-all').addEventListener('click', () => openCategorySheet(monthTx));
+}
 
-  const ctx = document.getElementById('chart-networth');
+function initSpark(series) {
+  const ctx = document.getElementById('nw-spark');
   if (!ctx) return;
-  const chart = new Chart(ctx, {
+  chartInstances.push(new Chart(ctx, {
+    type: 'line',
+    data: { labels: series.map(() => ''), datasets: [{ data: series, borderColor: '#1E7F5C', borderWidth: 2, fill: true, backgroundColor: 'rgba(30,127,92,.12)', tension: .35, pointRadius: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } },
+  }));
+}
+
+function initTrend(months, series) {
+  const ctx = document.getElementById('nw-chart');
+  if (!ctx) return;
+  chartInstances.push(new Chart(ctx, {
     type: 'line',
     data: {
-      labels: months.map(formatMonthLabel),
-      datasets: [{
-        label: 'Net Worth',
-        data: netWorthData,
-        borderColor: '#5C6BC0',
-        backgroundColor: '#5C6BC020',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 4,
-        pointBackgroundColor: '#5C6BC0',
-      }],
+      labels: months.map(monthLabel),
+      datasets: [{ data: series, borderColor: '#1E7F5C', backgroundColor: 'rgba(30,127,92,.10)', fill: true, tension: .3, pointRadius: 3, pointBackgroundColor: '#1E7F5C' }],
     },
     options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#8b97b3' } } },
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: '#8b97b3' }, grid: { color: '#3a3a5c33' } },
-        y: { ticks: { color: '#8b97b3' }, grid: { color: '#3a3a5c33' } },
+        x: { ticks: { color: TICK, font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: TICK, font: { size: 10 }, maxTicksLimit: 4 }, grid: { color: GRID } },
       },
     },
+  }));
+}
+
+function openCategorySheet(monthTx) {
+  const byCat = {};
+  monthTx.filter(t => t.type === 'expense').forEach(t => {
+    const name = t.categories?.name || 'Other';
+    byCat[name] = (byCat[name] || 0) + parseFloat(t.amount);
   });
-  chartInstances.push(chart);
+  const labels = Object.keys(byCat);
+  const data = Object.values(byCat);
+
+  const { el, close } = openSheet(`
+    <h3>Spending breakdown</h3>
+    ${labels.length ? '<div class="chart-box" style="height:280px"><canvas id="cat-full"></canvas></div>' : '<div class="empty">No expenses this month.</div>'}
+    <button class="btn btn-outline mt-12" id="cat-close" style="width:100%">Close</button>
+  `);
+  el.querySelector('#cat-close').addEventListener('click', close);
+
+  const ctx = el.querySelector('#cat-full');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: CAT_COLORS.slice(0, labels.length), borderWidth: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: TICK, padding: 10, font: { size: 12 } } } } },
+    });
+  }
 }
 
 // Helpers
-
 function sumByType(txs, type) {
   return txs.filter(t => t.type === type).reduce((s, t) => s + parseFloat(t.amount), 0);
 }
-
-function getLast12Months() {
-  const months = [];
+function getLastMonths(n) {
+  const out = [];
   const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(d.toISOString().slice(0, 7));
-  }
-  return months;
+  for (let i = n - 1; i >= 0; i--) out.push(new Date(now.getFullYear(), now.getMonth() - i, 1).toISOString().slice(0, 7));
+  return out;
 }
-
-function formatMonthLabel(ym) {
-  const [y, m] = ym.split('-');
+function monthLabel(ym) {
   const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [y, m] = ym.split('-');
   return `${names[parseInt(m) - 1]} ${y.slice(2)}`;
-}
-
-function trendArrow(current, previous) {
-  if (current > previous) return '<span class="text-ok">&#9650;</span>';
-  if (current < previous) return '<span class="text-danger">&#9660;</span>';
-  return '<span class="text-dim">&#9654;</span>';
-}
-
-function fmt(amount) {
-  return new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(amount);
 }

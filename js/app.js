@@ -43,6 +43,9 @@ const TAB_LABELS = {
   settings: 'Settings',
 };
 
+// Outlier pages allowed to scroll inside the fixed shell (long lists).
+const SCROLLABLE_VIEWS = new Set(['categories', 'settings']);
+
 function getTab() {
   return location.hash.replace('#', '') || 'dashboard';
 }
@@ -51,6 +54,7 @@ async function render() {
   const tab = getTab();
   tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   tabLabel.textContent = TAB_LABELS[tab] || tab;
+  viewEl.classList.toggle('scrollable', SCROLLABLE_VIEWS.has(tab));
   viewEl.innerHTML = '';
 
   const viewFn = views[tab];

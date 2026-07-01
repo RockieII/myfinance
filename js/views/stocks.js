@@ -1,12 +1,15 @@
 // MyFinance — Stocks View
-// Manage stock holdings and fetch live prices from Finnhub.
+// Holdings + live prices from Finnhub. No-scroll: summary stays fixed, the
+// holdings list paginates, and the add/edit form opens in a sheet.
 
 import * as DB from '../db.js';
 import { FINNHUB_API_KEY, STOCK_CACHE_MINUTES } from '../config.js';
+import { formatMoney } from '../format.js';
+import { openSheet } from '../sheet.js';
 
 let stocks = [];
 let priceCache = {};
-let editingId = null;
+let page = 0;
 
 export async function renderStocks(container) {
   const [stockData, prices] = await Promise.all([
@@ -16,73 +19,72 @@ export async function renderStocks(container) {
   stocks = stockData;
   priceCache = {};
   prices.forEach(p => { priceCache[p.ticker] = p; });
-  editingId = null;
+  page = 0;
   draw(container);
 }
 
 function draw(container) {
   const totalInvested = stocks.reduce((s, st) => s + st.quantity * st.purchase_price, 0);
-  const totalCurrent = stocks.reduce((s, st) => {
-    const price = priceCache[st.ticker]?.price || st.purchase_price;
-    return s + st.quantity * price;
-  }, 0);
+  const totalCurrent = stocks.reduce((s, st) => s + st.quantity * (priceCache[st.ticker]?.price || st.purchase_price), 0);
   const totalGain = totalCurrent - totalInvested;
   const gainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
-  const gainClass = totalGain >= 0 ? 'text-ok' : 'text-danger';
+  const gainClass = totalGain >= 0 ? 'text-up' : 'text-down';
 
   container.innerHTML = `
-    <!-- Portfolio summary -->
     <div class="card mb-12">
       <div class="flex-between">
         <div>
           <div class="fs-12 text-dim">Portfolio Value</div>
-          <div class="fs-24 fw-600">${formatMoney(totalCurrent)}</div>
+          <div class="fs-24 fw-600 money">${formatMoney(totalCurrent)}</div>
         </div>
         <div style="text-align:right">
           <div class="fs-12 text-dim">Total Gain/Loss</div>
-          <div class="fw-600 ${gainClass}">${totalGain >= 0 ? '+' : ''}${formatMoney(totalGain)} (${gainPct.toFixed(1)}%)</div>
+          <div class="fw-600 money ${gainClass}">${totalGain >= 0 ? '+' : ''}${formatMoney(totalGain)} (${gainPct.toFixed(1)}%)</div>
         </div>
       </div>
     </div>
 
     <div class="flex-between mb-12">
-      <button class="btn btn-outline btn-sm" id="refresh-btn"><i class="ph ph-arrows-clockwise"></i> Refresh Prices</button>
+      <button class="btn btn-outline btn-sm" id="refresh-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
       <button class="btn btn-primary btn-sm" id="add-stock-btn">+ Add Holding</button>
     </div>
 
-    <div id="stock-form-area"></div>
-
-    ${stocks.length ? `
-      <div class="card" style="padding:0">
-        ${stocks.map(stockRow).join('')}
-      </div>
-    ` : '<div class="empty">No stock holdings yet.</div>'}
+    <div class="list-panel">
+      <div class="list-region" id="stock-list"></div>
+      <div class="pager" id="stock-pager"></div>
+    </div>
   `;
 
-  // Refresh prices
-  container.querySelector('#refresh-btn').addEventListener('click', async () => {
-    await refreshAllPrices(container);
-  });
-
-  // Add
+  container.querySelector('#refresh-btn').addEventListener('click', () => refreshAllPrices(container));
   container.querySelector('#add-stock-btn').addEventListener('click', () => {
-    editingId = null;
-    showForm(container, {
+    openStockForm(container, null, {
       ticker: '', name: '', quantity: '', purchase_price: '',
       purchase_date: new Date().toISOString().slice(0, 10), currency: 'USD',
     });
   });
 
-  // Edit
-  container.querySelectorAll('[data-edit-stock]').forEach(btn => {
+  renderPage(container);
+}
+
+function renderPage(container) {
+  const region = container.querySelector('#stock-list');
+  const ROW_H = 64;
+  const perPage = Math.max(3, Math.floor(region.clientHeight / ROW_H));
+  const pages = Math.max(1, Math.ceil(stocks.length / perPage));
+  page = Math.min(page, pages - 1);
+  const slice = stocks.slice(page * perPage, page * perPage + perPage);
+
+  region.innerHTML = stocks.length
+    ? `<div class="card" style="padding:0">${slice.map(stockRow).join('')}</div>`
+    : '<div class="empty">No stock holdings yet.</div>';
+
+  region.querySelectorAll('[data-edit-stock]').forEach(btn => {
     btn.addEventListener('click', () => {
       const st = stocks.find(s => s.id === btn.dataset.editStock);
-      if (st) { editingId = st.id; showForm(container, st); }
+      if (st) openStockForm(container, st.id, st);
     });
   });
-
-  // Delete
-  container.querySelectorAll('[data-delete-stock]').forEach(btn => {
+  region.querySelectorAll('[data-delete-stock]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('Delete this holding?')) return;
       try {
@@ -92,6 +94,15 @@ function draw(container) {
       } catch (err) { showToast('Error: ' + err.message); }
     });
   });
+
+  const pager = container.querySelector('#stock-pager');
+  pager.innerHTML = stocks.length > perPage
+    ? `<button id="pg-prev" ${page === 0 ? 'disabled' : ''}>◂ Prev</button>
+       <span>Page ${page + 1} / ${pages}</span>
+       <button id="pg-next" ${page >= pages - 1 ? 'disabled' : ''}>Next ▸</button>`
+    : '';
+  pager.querySelector('#pg-prev')?.addEventListener('click', () => { page--; renderPage(container); });
+  pager.querySelector('#pg-next')?.addEventListener('click', () => { page++; renderPage(container); });
 }
 
 function stockRow(st) {
@@ -104,23 +115,23 @@ function stockRow(st) {
   const totalValue = currentPrice ? st.quantity * currentPrice : null;
   const gain = totalValue !== null ? totalValue - totalCost : null;
   const gainPct = gain !== null && totalCost > 0 ? (gain / totalCost) * 100 : null;
-  const gainClass = gain !== null ? (gain >= 0 ? 'text-ok' : 'text-danger') : 'text-dim';
+  const gainClass = gain !== null ? (gain >= 0 ? 'text-up' : 'text-down') : 'text-dim';
 
   return `
-    <div class="row" style="padding:12px 16px;flex-wrap:wrap">
+    <div class="row" style="padding:11px 16px;flex-wrap:wrap">
       <div style="flex:1;min-width:120px">
         <div class="fw-600">${st.ticker}</div>
         <div class="fs-12 text-dim">${st.name || st.ticker} &middot; ${st.quantity} shares</div>
       </div>
       <div style="text-align:right;min-width:100px">
         ${currentPrice !== null ? `
-          <div class="fw-600">${formatMoney(currentPrice, st.currency)}</div>
-          <div class="fs-12 ${changePct >= 0 ? 'text-ok' : 'text-danger'}">${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%${stale ? ' <span class="text-dim">(stale)</span>' : ''}</div>
+          <div class="fw-600 money">${formatMoney(currentPrice, st.currency)}</div>
+          <div class="fs-12 ${changePct >= 0 ? 'text-up' : 'text-down'}">${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%${stale ? ' <span class="text-dim">(stale)</span>' : ''}</div>
         ` : '<div class="text-dim fs-12">No price data</div>'}
       </div>
       <div style="text-align:right;min-width:100px">
         ${gain !== null ? `
-          <div class="fw-600 ${gainClass}">${gain >= 0 ? '+' : ''}${formatMoney(gain, st.currency)}</div>
+          <div class="fw-600 money ${gainClass}">${gain >= 0 ? '+' : ''}${formatMoney(gain, st.currency)}</div>
           <div class="fs-12 ${gainClass}">${gainPct.toFixed(1)}%</div>
         ` : `<div class="text-dim fs-12">Avg ${formatMoney(st.purchase_price, st.currency)}</div>`}
       </div>
@@ -132,59 +143,55 @@ function stockRow(st) {
   `;
 }
 
-function showForm(container, st) {
-  const area = container.querySelector('#stock-form-area');
-  area.innerHTML = `
-    <div class="card mb-12">
-      <h3 style="margin:0 0 12px;font-size:15px">${editingId ? 'Edit' : 'New'} Holding</h3>
-      <form id="stock-form">
-        <div class="form-group">
-          <label>Ticker</label>
-          <input id="st-ticker" class="form-control" value="${st.ticker}" placeholder="e.g. AAPL, VWCE.DE" required style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-          <label>Name</label>
-          <input id="st-name" class="form-control" value="${st.name || ''}" placeholder="e.g. Apple Inc.">
-        </div>
-        <div class="form-group">
-          <label>Shares</label>
-          <input id="st-qty" type="number" step="0.0001" min="0.0001" class="form-control" value="${st.quantity || ''}" required>
-        </div>
-        <div class="form-group">
-          <label>Avg. Purchase Price</label>
-          <input id="st-price" type="number" step="0.0001" min="0" class="form-control" value="${st.purchase_price || ''}" required>
-        </div>
-        <div class="form-group">
-          <label>Purchase Date</label>
-          <input id="st-date" type="date" class="form-control" value="${st.purchase_date}">
-        </div>
-        <div class="form-group">
-          <label>Currency</label>
-          <select id="st-currency" class="form-control">
-            <option value="USD" ${st.currency === 'USD' ? 'selected' : ''}>USD</option>
-            <option value="EUR" ${st.currency === 'EUR' ? 'selected' : ''}>EUR</option>
-            <option value="GBP" ${st.currency === 'GBP' ? 'selected' : ''}>GBP</option>
-          </select>
-        </div>
-        <div class="flex gap-8">
-          <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Add'}</button>
-          <button type="button" class="btn btn-outline" id="st-cancel">Cancel</button>
-        </div>
-      </form>
-    </div>
-  `;
+function openStockForm(container, editingId, st) {
+  const { el, close } = openSheet(`
+    <h3>${editingId ? 'Edit' : 'New'} Holding</h3>
+    <form id="stock-form">
+      <div class="form-group">
+        <label>Ticker</label>
+        <input id="st-ticker" class="form-control" value="${st.ticker}" placeholder="e.g. AAPL, VWCE.DE" required style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Name</label>
+        <input id="st-name" class="form-control" value="${st.name || ''}" placeholder="e.g. Apple Inc.">
+      </div>
+      <div class="form-group">
+        <label>Shares</label>
+        <input id="st-qty" type="number" step="0.0001" min="0.0001" class="form-control" value="${st.quantity || ''}" required>
+      </div>
+      <div class="form-group">
+        <label>Avg. Purchase Price</label>
+        <input id="st-price" type="number" step="0.0001" min="0" class="form-control" value="${st.purchase_price || ''}" required>
+      </div>
+      <div class="form-group">
+        <label>Purchase Date</label>
+        <input id="st-date" type="date" class="form-control" value="${st.purchase_date}">
+      </div>
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="st-currency" class="form-control">
+          <option value="USD" ${st.currency === 'USD' ? 'selected' : ''}>USD</option>
+          <option value="EUR" ${st.currency === 'EUR' ? 'selected' : ''}>EUR</option>
+          <option value="GBP" ${st.currency === 'GBP' ? 'selected' : ''}>GBP</option>
+        </select>
+      </div>
+      <div class="flex gap-8">
+        <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Add'}</button>
+        <button type="button" class="btn btn-outline" id="st-cancel">Cancel</button>
+      </div>
+    </form>
+  `);
 
-  area.querySelector('#st-cancel').addEventListener('click', () => { area.innerHTML = ''; });
-
-  area.querySelector('#stock-form').addEventListener('submit', async (e) => {
+  el.querySelector('#st-cancel').addEventListener('click', close);
+  el.querySelector('#stock-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {
-      ticker: document.getElementById('st-ticker').value.trim().toUpperCase(),
-      name: document.getElementById('st-name').value.trim(),
-      quantity: parseFloat(document.getElementById('st-qty').value),
-      purchase_price: parseFloat(document.getElementById('st-price').value),
-      purchase_date: document.getElementById('st-date').value,
-      currency: document.getElementById('st-currency').value,
+      ticker: el.querySelector('#st-ticker').value.trim().toUpperCase(),
+      name: el.querySelector('#st-name').value.trim(),
+      quantity: parseFloat(el.querySelector('#st-qty').value),
+      purchase_price: parseFloat(el.querySelector('#st-price').value),
+      purchase_date: el.querySelector('#st-date').value,
+      currency: el.querySelector('#st-currency').value,
     };
     try {
       if (editingId) {
@@ -194,6 +201,7 @@ function showForm(container, st) {
         await DB.create('stocks', data);
         showToast('Holding added');
       }
+      close();
       await renderStocks(container);
     } catch (err) { showToast('Error: ' + err.message); }
   });
@@ -205,7 +213,6 @@ async function refreshAllPrices(container) {
 
   showToast('Fetching prices...');
   let updated = 0;
-
   for (const ticker of tickers) {
     try {
       const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${FINNHUB_API_KEY}`);
@@ -218,17 +225,11 @@ async function refreshAllPrices(container) {
       console.warn(`Failed to fetch ${ticker}:`, err);
     }
   }
-
   showToast(`Updated ${updated}/${tickers.length} prices`);
   await renderStocks(container);
 }
 
 function isStale(fetchedAt) {
   if (!fetchedAt) return true;
-  const age = (Date.now() - new Date(fetchedAt).getTime()) / 60000;
-  return age > STOCK_CACHE_MINUTES;
-}
-
-function formatMoney(amount, currency = 'USD') {
-  return new Intl.NumberFormat('en', { style: 'currency', currency }).format(amount);
+  return (Date.now() - new Date(fetchedAt).getTime()) / 60000 > STOCK_CACHE_MINUTES;
 }

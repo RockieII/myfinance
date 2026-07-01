@@ -1,13 +1,16 @@
 // MyFinance — Transactions View
-// Full CRUD for income and expense entries, with filters.
+// Full CRUD for income/expense entries. No-scroll: the list paginates to fit
+// the viewport and the add/edit form opens in a sheet.
 
 import * as DB from '../db.js';
+import { formatMoney } from '../format.js';
+import { openSheet } from '../sheet.js';
 
 let transactions = [];
 let categories = [];
 let accounts = [];
-let editingId = null;
 let filters = { month: '', type: '', category_id: '', account_id: '' };
+let page = 0;
 
 export async function renderTransactions(container) {
   [transactions, categories, accounts] = await Promise.all([
@@ -15,7 +18,7 @@ export async function renderTransactions(container) {
     DB.getAll('categories', { order: 'name', ascending: true }),
     DB.getAll('accounts', { order: 'name', ascending: true }),
   ]);
-  editingId = null;
+  page = 0;
   draw(container);
 }
 
@@ -29,9 +32,6 @@ function draw(container) {
       <button class="btn btn-primary btn-sm" id="add-tx-btn">+ Add</button>
     </div>
 
-    <div id="tx-form-area"></div>
-
-    <!-- Filters -->
     <div class="filter-row mb-12">
       <select id="f-month" class="form-control filter-select">
         <option value="">All months</option>
@@ -52,79 +52,89 @@ function draw(container) {
       </select>
     </div>
 
-    <!-- Transaction list -->
-    ${filtered.length ? `
-      <div class="card" style="padding:0">
-        ${filtered.map(txRow).join('')}
-      </div>
-    ` : '<div class="empty">No transactions found.</div>'}
+    <div class="list-panel">
+      <div class="list-region" id="tx-list"></div>
+      <div class="pager" id="tx-pager"></div>
+    </div>
   `;
 
-  // Filter handlers
   ['f-month', 'f-type', 'f-category', 'f-account'].forEach(id => {
     container.querySelector('#' + id).addEventListener('change', (e) => {
       const key = { 'f-month': 'month', 'f-type': 'type', 'f-category': 'category_id', 'f-account': 'account_id' }[id];
       filters[key] = e.target.value;
+      page = 0;
       draw(container);
     });
   });
 
-  // Add
   container.querySelector('#add-tx-btn').addEventListener('click', () => {
-    editingId = null;
-    showForm(container, {
-      type: 'expense',
-      amount: '',
-      description: '',
+    openTxForm(container, null, {
+      type: 'expense', amount: '', description: '',
       date: new Date().toISOString().slice(0, 10),
       category_id: categories.find(c => c.type === 'expense')?.id || '',
       account_id: accounts[0]?.id || '',
     });
   });
 
-  // Edit
-  container.querySelectorAll('[data-edit-tx]').forEach(btn => {
+  renderPage(container, filtered);
+}
+
+function renderPage(container, filtered) {
+  const region = container.querySelector('#tx-list');
+  const ROW_H = 58;
+  const perPage = Math.max(3, Math.floor(region.clientHeight / ROW_H));
+  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
+  page = Math.min(page, pages - 1);
+  const slice = filtered.slice(page * perPage, page * perPage + perPage);
+
+  region.innerHTML = filtered.length
+    ? `<div class="card" style="padding:0">${slice.map(txRow).join('')}</div>`
+    : '<div class="empty">No transactions found.</div>';
+
+  region.querySelectorAll('[data-edit-tx]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tx = transactions.find(t => t.id === btn.dataset.editTx);
-      if (tx) {
-        editingId = tx.id;
-        showForm(container, tx);
-      }
+      if (tx) openTxForm(container, tx.id, tx);
     });
   });
-
-  // Delete
-  container.querySelectorAll('[data-delete-tx]').forEach(btn => {
+  region.querySelectorAll('[data-delete-tx]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('Delete this transaction?')) return;
       try {
         await DB.remove('transactions', btn.dataset.deleteTx);
         showToast('Transaction deleted');
         await renderTransactions(container);
-      } catch (err) {
-        showToast('Error: ' + err.message);
-      }
+      } catch (err) { showToast('Error: ' + err.message); }
     });
   });
+
+  const pager = container.querySelector('#tx-pager');
+  pager.innerHTML = filtered.length > perPage
+    ? `<button id="pg-prev" ${page === 0 ? 'disabled' : ''}>◂ Prev</button>
+       <span>Page ${page + 1} / ${pages}</span>
+       <button id="pg-next" ${page >= pages - 1 ? 'disabled' : ''}>Next ▸</button>`
+    : '';
+  pager.querySelector('#pg-prev')?.addEventListener('click', () => { page--; renderPage(container, filtered); });
+  pager.querySelector('#pg-next')?.addEventListener('click', () => { page++; renderPage(container, filtered); });
 }
 
 function txRow(tx) {
   const isIncome = tx.type === 'income';
   const sign = isIncome ? '+' : '-';
-  const colorClass = isIncome ? 'text-ok' : 'text-danger';
+  const colorClass = isIncome ? 'text-up' : 'text-down';
   const catName = tx.categories?.name || '';
   const catIcon = tx.categories?.icon || 'ph-tag';
   const accName = tx.accounts?.name || '';
 
   return `
-    <div class="row" style="padding:12px 16px">
+    <div class="row" style="padding:11px 16px">
       <i class="ph ${catIcon}" style="font-size:18px;color:var(--accent);width:24px;text-align:center;flex-shrink:0"></i>
       <div style="flex:1;min-width:0">
         <div class="fw-600" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.description || catName}</div>
         <div class="fs-12 text-dim">${tx.date} &middot; ${accName}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
-        <div class="fw-600 ${colorClass}">${sign}${formatMoney(tx.amount)}</div>
+        <div class="fw-600 money ${colorClass}">${sign}${formatMoney(tx.amount)}</div>
         <div class="fs-12 text-dim">${catName}</div>
       </div>
       <div class="flex gap-8" style="flex-shrink:0;margin-left:8px">
@@ -135,73 +145,66 @@ function txRow(tx) {
   `;
 }
 
-function showForm(container, tx) {
-  const area = container.querySelector('#tx-form-area');
+function openTxForm(container, editingId, tx) {
   const currentType = tx.type || 'expense';
   const filteredCats = categories.filter(c => c.type === currentType);
 
-  area.innerHTML = `
-    <div class="card mb-12">
-      <h3 style="margin:0 0 12px;font-size:15px">${editingId ? 'Edit' : 'New'} Transaction</h3>
-      <form id="tx-form">
-        <div class="form-group">
-          <label>Type</label>
-          <select id="tx-type" class="form-control">
-            <option value="expense" ${currentType === 'expense' ? 'selected' : ''}>Expense</option>
-            <option value="income" ${currentType === 'income' ? 'selected' : ''}>Income</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Amount</label>
-          <input id="tx-amount" type="number" step="0.01" min="0.01" class="form-control" value="${tx.amount || ''}" placeholder="0.00" required>
-        </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select id="tx-category" class="form-control">
-            ${filteredCats.map(c => `<option value="${c.id}" ${c.id === tx.category_id ? 'selected' : ''}>${c.name}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Account</label>
-          <select id="tx-account" class="form-control">
-            ${accounts.map(a => `<option value="${a.id}" ${a.id === tx.account_id ? 'selected' : ''}>${a.name}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Date</label>
-          <input id="tx-date" type="date" class="form-control" value="${tx.date}" required>
-        </div>
-        <div class="form-group">
-          <label>Description</label>
-          <input id="tx-desc" class="form-control" value="${tx.description || ''}" placeholder="Optional note">
-        </div>
-        <div class="flex gap-8">
-          <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Add'}</button>
-          <button type="button" class="btn btn-outline" id="tx-cancel">Cancel</button>
-        </div>
-      </form>
-    </div>
-  `;
+  const { el, close } = openSheet(`
+    <h3>${editingId ? 'Edit' : 'New'} Transaction</h3>
+    <form id="tx-form">
+      <div class="form-group">
+        <label>Type</label>
+        <select id="tx-type" class="form-control">
+          <option value="expense" ${currentType === 'expense' ? 'selected' : ''}>Expense</option>
+          <option value="income" ${currentType === 'income' ? 'selected' : ''}>Income</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount</label>
+        <input id="tx-amount" type="number" step="0.01" min="0.01" class="form-control" value="${tx.amount || ''}" placeholder="0.00" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="tx-category" class="form-control">
+          ${filteredCats.map(c => `<option value="${c.id}" ${c.id === tx.category_id ? 'selected' : ''}>${c.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Account</label>
+        <select id="tx-account" class="form-control">
+          ${accounts.map(a => `<option value="${a.id}" ${a.id === tx.account_id ? 'selected' : ''}>${a.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input id="tx-date" type="date" class="form-control" value="${tx.date}" required>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input id="tx-desc" class="form-control" value="${tx.description || ''}" placeholder="Optional note">
+      </div>
+      <div class="flex gap-8">
+        <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Add'}</button>
+        <button type="button" class="btn btn-outline" id="tx-cancel">Cancel</button>
+      </div>
+    </form>
+  `);
 
-  // Update category dropdown when type changes
-  area.querySelector('#tx-type').addEventListener('change', (e) => {
-    const newType = e.target.value;
-    const cats = categories.filter(c => c.type === newType);
-    const catSelect = area.querySelector('#tx-category');
-    catSelect.innerHTML = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  el.querySelector('#tx-type').addEventListener('change', (e) => {
+    const cats = categories.filter(c => c.type === e.target.value);
+    el.querySelector('#tx-category').innerHTML = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   });
+  el.querySelector('#tx-cancel').addEventListener('click', close);
 
-  area.querySelector('#tx-cancel').addEventListener('click', () => { area.innerHTML = ''; });
-
-  area.querySelector('#tx-form').addEventListener('submit', async (e) => {
+  el.querySelector('#tx-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {
-      type: document.getElementById('tx-type').value,
-      amount: parseFloat(document.getElementById('tx-amount').value),
-      category_id: document.getElementById('tx-category').value,
-      account_id: document.getElementById('tx-account').value,
-      date: document.getElementById('tx-date').value,
-      description: document.getElementById('tx-desc').value.trim(),
+      type: el.querySelector('#tx-type').value,
+      amount: parseFloat(el.querySelector('#tx-amount').value),
+      category_id: el.querySelector('#tx-category').value,
+      account_id: el.querySelector('#tx-account').value,
+      date: el.querySelector('#tx-date').value,
+      description: el.querySelector('#tx-desc').value.trim(),
     };
     try {
       if (editingId) {
@@ -211,10 +214,9 @@ function showForm(container, tx) {
         await DB.create('transactions', data);
         showToast('Transaction added');
       }
+      close();
       await renderTransactions(container);
-    } catch (err) {
-      showToast('Error: ' + err.message);
-    }
+    } catch (err) { showToast('Error: ' + err.message); }
   });
 }
 
@@ -229,10 +231,5 @@ function applyFilters(txs) {
 }
 
 function getUniqueMonths(txs) {
-  const set = new Set(txs.map(t => t.date.slice(0, 7)));
-  return [...set].sort().reverse();
-}
-
-function formatMoney(amount) {
-  return new Intl.NumberFormat('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+  return [...new Set(txs.map(t => t.date.slice(0, 7)))].sort().reverse();
 }
