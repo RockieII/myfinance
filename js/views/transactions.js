@@ -81,15 +81,25 @@ function draw(container) {
 
 function renderPage(container, filtered) {
   const region = container.querySelector('#tx-list');
-  const ROW_H = 58;
-  const perPage = Math.max(3, Math.floor(region.clientHeight / ROW_H));
-  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
-  page = Math.min(page, pages - 1);
-  const slice = filtered.slice(page * perPage, page * perPage + perPage);
 
-  region.innerHTML = filtered.length
-    ? `<div class="card" style="padding:0">${slice.map(txRow).join('')}</div>`
-    : '<div class="empty">No transactions found.</div>';
+  const paint = (n) => {
+    const pages = Math.max(1, Math.ceil(filtered.length / n));
+    page = Math.min(page, pages - 1);
+    const slice = filtered.slice(page * n, page * n + n);
+    region.innerHTML = filtered.length
+      ? `<div class="card" style="padding:0">${slice.map(txRow).join('')}</div>`
+      : '<div class="empty">No transactions found.</div>';
+    return pages;
+  };
+
+  // Estimate rows-per-page, then correct from the real row height so the last row never clips.
+  let perPage = Math.max(3, Math.floor(region.clientHeight / 60));
+  let pages = paint(perPage);
+  const sample = region.querySelector('.row');
+  if (sample) {
+    const fit = Math.max(3, Math.floor(region.clientHeight / (sample.offsetHeight + 2)));
+    if (fit !== perPage) { perPage = fit; pages = paint(perPage); }
+  }
 
   region.querySelectorAll('[data-edit-tx]').forEach(btn => {
     btn.addEventListener('click', () => {

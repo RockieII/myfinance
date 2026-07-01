@@ -68,15 +68,25 @@ function draw(container) {
 
 function renderPage(container) {
   const region = container.querySelector('#stock-list');
-  const ROW_H = 64;
-  const perPage = Math.max(3, Math.floor(region.clientHeight / ROW_H));
-  const pages = Math.max(1, Math.ceil(stocks.length / perPage));
-  page = Math.min(page, pages - 1);
-  const slice = stocks.slice(page * perPage, page * perPage + perPage);
 
-  region.innerHTML = stocks.length
-    ? `<div class="card" style="padding:0">${slice.map(stockRow).join('')}</div>`
-    : '<div class="empty">No stock holdings yet.</div>';
+  const paint = (n) => {
+    const pages = Math.max(1, Math.ceil(stocks.length / n));
+    page = Math.min(page, pages - 1);
+    const slice = stocks.slice(page * n, page * n + n);
+    region.innerHTML = stocks.length
+      ? `<div class="card" style="padding:0">${slice.map(stockRow).join('')}</div>`
+      : '<div class="empty">No stock holdings yet.</div>';
+    return pages;
+  };
+
+  // Estimate rows-per-page, then correct from the real row height so the last row never clips.
+  let perPage = Math.max(3, Math.floor(region.clientHeight / 66));
+  let pages = paint(perPage);
+  const sample = region.querySelector('.row');
+  if (sample) {
+    const fit = Math.max(3, Math.floor(region.clientHeight / (sample.offsetHeight + 2)));
+    if (fit !== perPage) { perPage = fit; pages = paint(perPage); }
+  }
 
   region.querySelectorAll('[data-edit-stock]').forEach(btn => {
     btn.addEventListener('click', () => {
