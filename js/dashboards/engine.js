@@ -6,20 +6,20 @@
 import * as DB from '../db.js';
 import { WIDGETS } from './registry.js';
 import { getProfiles } from '../profiles.js';
+import { getTheme } from './themes.js';
 
-export const MAX_H = 4;
+export const MAX_H = 6;
 
-// A sensible built-in page until the user composes their own (Phase 5 adds create/edit).
-export const DEFAULT_LAYOUT = [
-  { id: 'nw', type: 'net-worth', w: 2, h: 1 },
-  { id: 'cf', type: 'cash-flow', w: 2, h: 1 },
-  { id: 'sp', type: 'spending',  w: 2, h: 2 },
-  { id: 'tr', type: 'trend',     w: 2, h: 2 },
-];
-
-export function getCols() { return window.innerWidth >= 769 ? 4 : 2; }
+// Grid resolution (columns) by width — more cells = finer placement/sizing.
+export function getCols() {
+  const w = window.innerWidth;
+  if (w >= 1100) return 8;
+  if (w >= 769) return 6;
+  return 4;
+}
 
 let charts = [];
+let pendingRaf = null;
 
 export async function loadContext() {
   const [transactions, accounts, stocks, prices] = await Promise.all([
@@ -70,12 +70,15 @@ export async function loadContext() {
     months, monthLabels: months.map(monthLabel), series, netWorth, trendPct,
     monthIncome, monthExpense, net, savingsRate,
     topCats, maxCat, accountBalances, portfolioValue,
+    accent: getTheme('default').accent,   // overridden per-page by the active theme
+    font: '',                             // overridden per-page by the active theme
     addChart: () => {},
   };
 }
 
 export function renderGrid(container, layout, ctx, opts = {}) {
   const { editing = false, onChange } = opts;
+  if (pendingRaf) { cancelAnimationFrame(pendingRaf); pendingRaf = null; }
   charts.forEach(c => { try { c.destroy(); } catch (_) {} });
   charts = [];
   ctx.addChart = (c) => charts.push(c);
@@ -97,7 +100,11 @@ export function renderGrid(container, layout, ctx, opts = {}) {
     </div>`;
 
   // Render bodies after layout so chart canvases have real dimensions.
-  requestAnimationFrame(() => {
+  // Snapshot the accent/font for this render so a rapid re-render can't repaint with another page's theme.
+  const accent = ctx.accent, font = ctx.font;
+  pendingRaf = requestAnimationFrame(() => {
+    pendingRaf = null;
+    ctx.accent = accent; ctx.font = font;
     layout.forEach(item => {
       const w = WIDGETS[item.type];
       const el = container.querySelector(`[data-body="${item.id}"]`);

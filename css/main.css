@@ -50,9 +50,14 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
 }
-.title-row { display: flex; align-items: baseline; gap: 10px; padding: 0 16px; width: 100%; }
+.title-row { display: flex; align-items: baseline; gap: 10px; padding: 0 6px; flex: 1; min-width: 0; }
 .topbar h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .2px; color: var(--accent); }
-.tab-label { color: var(--text-dim); font-size: 13px; }
+.tab-label { color: var(--text-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn { display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; color: var(--text-dim); flex-shrink: 0; }
+.icon-btn:hover { color: var(--text); }
+.sidebar-toggle { display: none; }   /* only meaningful for the desktop sidebar */
+.topbar, #view { transition: left .2s ease; }
+.tabbar { transition: width .2s ease; }
 
 /* Tab bar (mobile bottom) */
 .tabbar {
@@ -305,4 +310,25 @@ input, select, textarea { font: inherit; color: inherit; }
   .sheet-backdrop { align-items: center; }
   .sheet { border-radius: 18px; transform: translateY(0) scale(.98); }
   .sheet-backdrop.show .sheet { transform: scale(1); }
+
+  /* Retractable sidebar */
+  .sidebar-toggle { display: flex; }
+  body.sidebar-collapsed .tabbar { width: 64px; }
+  body.sidebar-collapsed .tab { justify-content: center; padding: 12px 0; gap: 0; }
+  body.sidebar-collapsed .tab span { display: none; }
+  body.sidebar-collapsed .topbar { left: 64px; }
+  body.sidebar-collapsed #view { left: 64px; }
 }
+
+/* ---- Dashboard page selector + theme chips ---- */
+.page-sel {
+  font-size: 14px; font-weight: 600; padding: 6px 8px; max-width: 55%;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.theme-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.theme-chip {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 20px; font-size: 13px; background: var(--surface); color: var(--text);
+}
+.theme-chip.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.theme-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }

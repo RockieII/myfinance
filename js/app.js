@@ -85,6 +85,17 @@ window.addEventListener('hashchange', render);
 // Called on boot and after profile edits in Settings.
 window.refreshProfiles = loadProfiles;
 
+// Header: settings gear + retractable sidebar (desktop).
+document.getElementById('settings-btn').addEventListener('click', () => { location.hash = 'settings'; });
+
+const sidebarToggle = document.getElementById('sidebar-toggle');
+if (localStorage.getItem('mf.sidebarCollapsed') === '1') document.body.classList.add('sidebar-collapsed');
+sidebarToggle.addEventListener('click', () => {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  if (collapsed) localStorage.setItem('mf.sidebarCollapsed', '1');
+  else localStorage.removeItem('mf.sidebarCollapsed');
+});
+
 // Toast utility (globally available)
 window.showToast = function(msg, duration = 2500) {
   const toast = document.getElementById('toast');

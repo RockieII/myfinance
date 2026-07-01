@@ -19,9 +19,10 @@ export const WIDGETS = {
         <div class="fs-12 ${ctx.trendPct >= 0 ? 'text-up' : 'text-down'}" style="margin-bottom:6px">
           ${ctx.trendPct >= 0 ? '▲' : '▼'} ${Math.abs(ctx.trendPct).toFixed(1)}% this month</div>
         <div class="chart-box" style="flex:1;min-height:0"><canvas></canvas></div>`;
+      const acc = ctx.accent || ACCENT;
       ctx.addChart(new Chart(el.querySelector('canvas'), {
         type: 'line',
-        data: { labels: ctx.series.map(() => ''), datasets: [{ data: ctx.series, borderColor: ACCENT, borderWidth: 2, fill: true, backgroundColor: 'rgba(30,127,92,.12)', tension: .35, pointRadius: 0 }] },
+        data: { labels: ctx.series.map(() => ''), datasets: [{ data: ctx.series, borderColor: acc, borderWidth: 2, fill: true, backgroundColor: acc + '22', tension: .35, pointRadius: 0 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } },
       }));
     },
@@ -59,10 +60,11 @@ export const WIDGETS = {
     title: 'Net Worth · 6 months', section: 'solo', minW: 2, minH: 2,
     render(el, ctx) {
       el.innerHTML = `<div class="chart-box" style="flex:1;min-height:0"><canvas></canvas></div>`;
+      const acc = ctx.accent || ACCENT;
       ctx.addChart(new Chart(el.querySelector('canvas'), {
         type: 'line',
-        data: { labels: ctx.monthLabels, datasets: [{ data: ctx.series, borderColor: ACCENT, backgroundColor: 'rgba(30,127,92,.10)', fill: true, tension: .3, pointRadius: 2, pointBackgroundColor: ACCENT }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: TICK, font: { size: 9 } }, grid: { display: false } }, y: { ticks: { color: TICK, font: { size: 9 }, maxTicksLimit: 4 }, grid: { color: GRID } } } },
+        data: { labels: ctx.monthLabels, datasets: [{ data: ctx.series, borderColor: acc, backgroundColor: acc + '1A', fill: true, tension: .3, pointRadius: 2, pointBackgroundColor: acc }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: TICK, font: { size: 9, family: ctx.font || undefined } }, grid: { display: false } }, y: { ticks: { color: TICK, font: { size: 9, family: ctx.font || undefined }, maxTicksLimit: 4 }, grid: { color: GRID } } } },
       }));
     },
   },
