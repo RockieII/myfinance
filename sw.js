@@ -1,4 +1,4 @@
-const CACHE_NAME = 'myfinance-v7';
+const CACHE_NAME = 'myfinance-v8';
 
 const SHELL = [
   './',
@@ -13,7 +13,10 @@ const SHELL = [
   './js/sheet.js',
   './js/profiles.js',
   './js/seed-data.js',
+  './js/dashboards/registry.js',
+  './js/dashboards/engine.js',
   './js/views/dashboard.js',
+  './js/views/dashboards.js',
   './js/views/transactions.js',
   './js/views/stocks.js',
   './js/views/categories.js',

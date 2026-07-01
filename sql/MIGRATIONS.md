@@ -64,4 +64,32 @@ DROP TABLE IF EXISTS profiles;   -- RLS policy + index drop with the table
 
 ---
 
-<!-- Future entries (Phase 3 dashboards) get appended here with UP/DOWN. -->
+## 003 — dashboards  (Phase 3)
+User-composable dashboard pages. Each row is one page; its widgets + grid sizes live in `layout jsonb`
+(an ordered array of `{ id, type, w, h }`). Purely additive — the pre-platform dashboard ignores this table.
+
+**UP**
+```sql
+CREATE TABLE IF NOT EXISTS dashboards (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name       text NOT NULL DEFAULT 'My dashboard',
+  theme      text NOT NULL DEFAULT 'default',
+  layout     jsonb NOT NULL DEFAULT '[]',
+  position   int  NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE dashboards ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own dashboards" ON dashboards FOR ALL
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_dashboards_user ON dashboards(user_id);
+```
+
+**DOWN**
+```sql
+DROP TABLE IF EXISTS dashboards;
+```
+
+---
+
+<!-- Future entries (Phase 4/5) get appended here with UP/DOWN. -->

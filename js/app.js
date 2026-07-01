@@ -1,10 +1,11 @@
 // MyFinance — Main App
 // Initializes Supabase, handles auth gate, routes between views.
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, PLATFORM_V2 } from './config.js';
 import { initDB } from './db.js';
 import { renderLogin, getSession, signOut } from './auth.js';
 import { renderDashboard } from './views/dashboard.js';
+import { renderDashboards } from './views/dashboards.js';
 import { renderTransactions } from './views/transactions.js';
 import { renderStocks } from './views/stocks.js';
 import { renderCategories } from './views/categories.js';
@@ -51,6 +52,9 @@ const TAB_LABELS = {
 // (Categories + Help are reachable from Settings, not the tab bar.)
 const SCROLLABLE_VIEWS = new Set(['categories', 'settings', 'help']);
 
+// Platform v2 (grid dashboards). OFF by default; opt-in per device via a Settings→Developer toggle.
+const platformV2 = PLATFORM_V2 || localStorage.getItem('mf.platformV2') === '1';
+
 function getTab() {
   return location.hash.replace('#', '') || 'dashboard';
 }
@@ -62,7 +66,8 @@ async function render() {
   viewEl.classList.toggle('scrollable', SCROLLABLE_VIEWS.has(tab));
   viewEl.innerHTML = '';
 
-  const viewFn = views[tab];
+  // Platform v2: the Dashboard tab renders the new grid dashboard.
+  const viewFn = (tab === 'dashboard' && platformV2) ? renderDashboards : views[tab];
   if (viewFn) {
     await viewFn(viewEl);
   } else {
