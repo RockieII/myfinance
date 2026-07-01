@@ -36,9 +36,11 @@ export async function create(table, record) {
 }
 
 export async function update(table, id, changes) {
+  // Note: no forced updated_at — several tables (accounts, categories, profiles) don't have that
+  // column, and it isn't read anywhere. Tables that have it keep their DEFAULT/existing value.
   const { data, error } = await supabase
     .from(table)
-    .update({ ...changes, updated_at: new Date().toISOString() })
+    .update(changes)
     .eq('id', id)
     .select()
     .single();

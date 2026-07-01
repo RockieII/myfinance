@@ -8,7 +8,9 @@ import { generateTestData, wipeTestData } from '../seed-data.js';
 import { formatMoney } from '../format.js';
 
 let accounts = [];
+let profiles = [];
 let editingId = null;
+let editingProfileId = null;
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Checking' },
@@ -17,9 +19,15 @@ const ACCOUNT_TYPES = [
   { value: 'investment', label: 'Investment' },
 ];
 
+const PROFILE_COLORS = ['#1E7F5C', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#EF4444', '#14B8A6', '#6B7280'];
+
 export async function renderSettings(container) {
-  accounts = await DB.getAll('accounts', { order: 'name', ascending: true });
+  [accounts, profiles] = await Promise.all([
+    DB.getAll('accounts', { order: 'name', ascending: true }),
+    DB.getAll('profiles', { order: 'name', ascending: true }),
+  ]);
   editingId = null;
+  editingProfileId = null;
   draw(container);
 }
 
@@ -35,6 +43,13 @@ function draw(container) {
     ` : '<div class="empty">No accounts yet. Add your first account.</div>'}
 
     <button class="btn btn-primary mt-12" id="add-account-btn">+ Add Account</button>
+
+    <h3 class="section-title" style="margin-top:32px">Profiles <span class="text-dim" style="text-transform:none;letter-spacing:0">· share this account</span></h3>
+    <div id="profile-form-area"></div>
+    ${profiles.length
+      ? `<div class="card">${profiles.map(profileRow).join('')}</div>`
+      : '<div class="empty" style="padding:16px">No profiles yet. Add one per person (e.g. for a couple) to track who spent what — everything stays in this one account.</div>'}
+    <button class="btn btn-primary mt-12" id="add-profile-btn">+ Add Profile</button>
 
     <h3 class="section-title" style="margin-top:32px">Categories</h3>
     <div class="card">
@@ -94,6 +109,29 @@ function draw(container) {
       } catch (err) {
         showToast('Cannot delete: ' + err.message);
       }
+    });
+  });
+
+  // Profiles: add / edit / delete
+  container.querySelector('#add-profile-btn').addEventListener('click', () => {
+    editingProfileId = null;
+    showProfileForm(container, { name: '', color: PROFILE_COLORS[profiles.length % PROFILE_COLORS.length] });
+  });
+  container.querySelectorAll('[data-edit-profile]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = profiles.find(x => x.id === btn.dataset.editProfile);
+      if (p) { editingProfileId = p.id; showProfileForm(container, p); }
+    });
+  });
+  container.querySelectorAll('[data-delete-profile]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this profile? Its transactions stay, but become unassigned (shared).')) return;
+      try {
+        await DB.remove('profiles', btn.dataset.deleteProfile);
+        await window.refreshProfiles?.();
+        showToast('Profile deleted');
+        await renderSettings(container);
+      } catch (err) { showToast('Cannot delete: ' + err.message); }
     });
   });
 
@@ -160,6 +198,68 @@ function accountRow(acc) {
       </div>
     </div>
   `;
+}
+
+function profileRow(p) {
+  return `
+    <div class="row flex-between">
+      <div class="flex gap-8" style="align-items:center">
+        <span style="width:14px;height:14px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>
+        <span class="fw-600">${p.name}</span>
+      </div>
+      <div class="flex gap-8" style="align-items:center">
+        <button data-edit-profile="${p.id}" class="btn-icon" title="Edit"><i class="ph ph-pencil-simple"></i></button>
+        <button data-delete-profile="${p.id}" class="btn-icon" title="Delete"><i class="ph ph-trash"></i></button>
+      </div>
+    </div>
+  `;
+}
+
+function showProfileForm(container, p) {
+  const area = container.querySelector('#profile-form-area');
+  const current = p.color || PROFILE_COLORS[0];
+  area.innerHTML = `
+    <div class="card mb-12">
+      <h3 style="margin:0 0 12px;font-size:15px">${editingProfileId ? 'Edit' : 'New'} Profile</h3>
+      <form id="profile-form">
+        <div class="form-group">
+          <label>Name</label>
+          <input id="pf-name" class="form-control" value="${p.name}" placeholder="e.g. Alex" required>
+        </div>
+        <div class="form-group">
+          <label>Colour</label>
+          <div class="icon-grid">
+            ${PROFILE_COLORS.map(c => `<button type="button" class="color-pick ${c === current ? 'active' : ''}" data-color="${c}" style="background:${c}"></button>`).join('')}
+          </div>
+        </div>
+        <div class="flex gap-8">
+          <button type="submit" class="btn btn-primary">${editingProfileId ? 'Save' : 'Create'}</button>
+          <button type="button" class="btn btn-outline" id="pf-cancel">Cancel</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  let selectedColor = current;
+  area.querySelectorAll('.color-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      area.querySelectorAll('.color-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedColor = btn.dataset.color;
+    });
+  });
+  area.querySelector('#pf-cancel').addEventListener('click', () => { area.innerHTML = ''; });
+  area.querySelector('#profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = { name: document.getElementById('pf-name').value.trim(), color: selectedColor };
+    if (!data.name) return;
+    try {
+      if (editingProfileId) { await DB.update('profiles', editingProfileId, data); showToast('Profile updated'); }
+      else { await DB.create('profiles', data); showToast('Profile created'); }
+      await window.refreshProfiles?.();
+      await renderSettings(container);
+    } catch (err) { showToast('Error: ' + err.message); }
+  });
 }
 
 function showForm(container, acc) {

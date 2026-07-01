@@ -10,6 +10,7 @@ import { renderStocks } from './views/stocks.js';
 import { renderCategories } from './views/categories.js';
 import { renderSettings } from './views/settings.js';
 import { renderHelp } from './views/help.js';
+import { loadProfiles, getProfiles, getActiveProfile, setActiveProfile } from './profiles.js';
 
 // Service worker
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
@@ -26,6 +27,7 @@ const tabLabel = document.getElementById('tab-label');
 const tabs = document.querySelectorAll('.tab');
 const topbar = document.querySelector('.topbar');
 const tabbar = document.querySelector('.tabbar');
+const profileSwitcher = document.getElementById('profile-switcher');
 
 // View registry
 const views = {
@@ -75,6 +77,24 @@ tabs.forEach(t => t.addEventListener('click', () => {
 }));
 window.addEventListener('hashchange', render);
 
+// Profile switcher (header). Hidden until the account has profiles.
+function populateProfileSwitcher() {
+  const list = getProfiles();
+  if (!list.length) { profileSwitcher.hidden = true; profileSwitcher.innerHTML = ''; return; }
+  const active = getActiveProfile();
+  profileSwitcher.innerHTML = `<option value="">All profiles</option>` +
+    list.map(p => `<option value="${p.id}" ${p.id === active ? 'selected' : ''}>${p.name}</option>`).join('');
+  profileSwitcher.hidden = false;
+}
+profileSwitcher.addEventListener('change', () => { setActiveProfile(profileSwitcher.value); render(); });
+
+// Reload profiles + refresh the switcher (called on boot and after profile edits in Settings).
+async function refreshProfiles() {
+  await loadProfiles();
+  populateProfileSwitcher();
+}
+window.refreshProfiles = refreshProfiles;
+
 // Toast utility (globally available)
 window.showToast = function(msg, duration = 2500) {
   const toast = document.getElementById('toast');
@@ -85,20 +105,24 @@ window.showToast = function(msg, duration = 2500) {
 };
 
 // Auth gate
+async function enterApp() {
+  topbar.style.display = '';
+  tabbar.style.display = '';
+  await refreshProfiles();
+  render();
+}
+
 async function boot() {
   const session = await getSession();
   if (session) {
-    topbar.style.display = '';
-    tabbar.style.display = '';
-    render();
+    enterApp();
   } else {
     topbar.style.display = 'none';
     tabbar.style.display = 'none';
+    profileSwitcher.hidden = true;
     renderLogin(viewEl, () => {
-      topbar.style.display = '';
-      tabbar.style.display = '';
       location.hash = 'dashboard';
-      render();
+      enterApp();
     });
   }
 }

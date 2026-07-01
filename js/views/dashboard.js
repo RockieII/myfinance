@@ -5,6 +5,7 @@
 import * as DB from '../db.js';
 import { formatMoney } from '../format.js';
 import { openSheet } from '../sheet.js';
+import { scopeToActiveProfile, getActiveProfile, activeProfileName } from '../profiles.js';
 
 let chartInstances = [];
 const GRID = '#E2E6EC';
@@ -24,9 +25,14 @@ export async function renderDashboard(container) {
   const priceMap = {};
   prices.forEach(p => { priceMap[p.ticker] = p.price; });
 
+  // Flow metrics (income/expense/spending) are scoped to the active profile;
+  // net worth stays household-wide (accounts + portfolio are shared).
+  const scoped = scopeToActiveProfile(transactions);
+  const isScoped = !!getActiveProfile();
+
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7);
-  const monthTx = transactions.filter(t => t.date.startsWith(currentMonth));
+  const monthTx = scoped.filter(t => t.date.startsWith(currentMonth));
   const monthIncome = sumByType(monthTx, 'income');
   const monthExpense = sumByType(monthTx, 'expense');
   const net = monthIncome - monthExpense;
@@ -66,6 +72,8 @@ export async function renderDashboard(container) {
         </div>
         <div class="chart-box hero-spark"><canvas id="nw-spark"></canvas></div>
       </div>
+
+      ${isScoped ? `<div class="fs-12 text-dim" style="margin:-4px 2px 0">Showing <strong>${activeProfileName()}</strong>'s activity · net worth is household-wide</div>` : ''}
 
       <div class="strip">
         <div class="stat"><span class="label">In</span><span class="val money text-up">${formatMoney(monthIncome, 'EUR', 0)}</span></div>

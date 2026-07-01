@@ -5,6 +5,7 @@
 import * as DB from '../db.js';
 import { formatMoney } from '../format.js';
 import { openSheet } from '../sheet.js';
+import { getProfiles, getActiveProfile, scopeToActiveProfile } from '../profiles.js';
 
 let transactions = [];
 let categories = [];
@@ -23,8 +24,9 @@ export async function renderTransactions(container) {
 }
 
 function draw(container) {
-  const months = getUniqueMonths(transactions);
-  const filtered = applyFilters(transactions);
+  const scoped = scopeToActiveProfile(transactions);   // header profile filter (All = everything)
+  const months = getUniqueMonths(scoped);
+  const filtered = applyFilters(scoped);
 
   container.innerHTML = `
     <div class="flex-between mb-12">
@@ -159,6 +161,8 @@ function txRow(tx) {
 function openTxForm(container, editingId, tx) {
   const currentType = tx.type || 'expense';
   const filteredCats = categories.filter(c => c.type === currentType);
+  const profiles = getProfiles();
+  const defaultProfile = tx.profile_id || (editingId ? '' : getActiveProfile());
 
   const { el, close } = openSheet(`
     <h3>${editingId ? 'Edit' : 'New'} Transaction</h3>
@@ -186,6 +190,14 @@ function openTxForm(container, editingId, tx) {
           ${accounts.map(a => `<option value="${a.id}" ${a.id === tx.account_id ? 'selected' : ''}>${a.name}</option>`).join('')}
         </select>
       </div>
+      ${profiles.length ? `
+      <div class="form-group">
+        <label>Profile</label>
+        <select id="tx-profile" class="form-control">
+          <option value="">Shared / none</option>
+          ${profiles.map(p => `<option value="${p.id}" ${p.id === defaultProfile ? 'selected' : ''}>${p.name}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div class="form-group">
         <label>Date</label>
         <input id="tx-date" type="date" class="form-control" value="${tx.date}" required>
@@ -217,6 +229,8 @@ function openTxForm(container, editingId, tx) {
       date: el.querySelector('#tx-date').value,
       description: el.querySelector('#tx-desc').value.trim(),
     };
+    const profileSel = el.querySelector('#tx-profile');
+    if (profileSel) data.profile_id = profileSel.value || null;
     try {
       if (editingId) {
         await DB.update('transactions', editingId, data);
