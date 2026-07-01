@@ -10,3 +10,8 @@ export const STOCK_CACHE_MINUTES = 15;
 
 // Show the Developer tools panel (test-data generator) in Settings.
 export const DEV_TOOLS = true;
+
+// Platform v2 (customizable dashboard pages). OFF = today's fixed app.
+// Flipping this to true switches on the new dashboard system — instant rollback of the
+// experience without a code revert. See sql/MIGRATIONS.md and the platform plan.
+export const PLATFORM_V2 = false;

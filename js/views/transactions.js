@@ -134,11 +134,12 @@ function txRow(tx) {
   const colorClass = isIncome ? 'text-up' : 'text-down';
   const catName = tx.categories?.name || '';
   const catIcon = tx.categories?.icon || 'ph-tag';
+  const catColor = tx.categories?.color || 'var(--accent)';
   const accName = tx.accounts?.name || '';
 
   return `
     <div class="row" style="padding:11px 16px">
-      <i class="ph ${catIcon}" style="font-size:18px;color:var(--accent);width:24px;text-align:center;flex-shrink:0"></i>
+      <i class="ph ${catIcon}" style="font-size:18px;color:${catColor};width:24px;text-align:center;flex-shrink:0"></i>
       <div style="flex:1;min-width:0">
         <div class="fw-600" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.description || catName}</div>
         <div class="fs-12 text-dim">${tx.date} &middot; ${accName}</div>

@@ -13,6 +13,12 @@ const ICONS = [
   'ph-dots-three',
 ];
 
+const COLORS = [
+  '#6366F1', '#3B82F6', '#0EA5E9', '#14B8A6', '#10B981', '#1E7F5C', '#22C55E',
+  '#EAB308', '#F59E0B', '#F97316', '#EF4444', '#EC4899', '#A855F7', '#8B5CF6', '#6B7280',
+];
+const DEFAULT_COLOR = '#6B7280';
+
 let categories = [];
 let editingId = null;
 let filterType = 'expense';
@@ -29,6 +35,7 @@ function draw(container) {
   const defaults = filtered.filter(c => c.is_default);
 
   container.innerHTML = `
+    <button class="btn btn-outline btn-sm mb-12" id="cat-back">‹ Settings</button>
     <div class="flex-between mb-12">
       <div class="tab-toggle">
         <button class="toggle-btn ${filterType === 'expense' ? 'active' : ''}" data-type="expense">Expenses</button>
@@ -55,6 +62,9 @@ function draw(container) {
 
     ${!defaults.length && !customs.length ? '<div class="empty">No categories yet.</div>' : ''}
   `;
+
+  // Back to Settings
+  container.querySelector('#cat-back').addEventListener('click', () => { location.hash = 'settings'; });
 
   // Toggle type
   container.querySelectorAll('.toggle-btn').forEach(btn => {
@@ -98,7 +108,7 @@ function draw(container) {
 function catRow(cat, editable) {
   return `
     <div class="row">
-      <i class="ph ${cat.icon}" style="font-size:20px;color:var(--accent);width:24px;text-align:center"></i>
+      <i class="ph ${cat.icon}" style="font-size:20px;color:${cat.color || 'var(--accent)'};width:24px;text-align:center"></i>
       <span style="flex:1">${cat.name}</span>
       ${editable ? `
         <button data-edit="${cat.id}" class="btn-icon" title="Edit"><i class="ph ph-pencil-simple"></i></button>
@@ -135,6 +145,14 @@ function showForm(container, cat) {
             `).join('')}
           </div>
         </div>
+        <div class="form-group">
+          <label>Colour</label>
+          <div class="icon-grid" id="color-grid">
+            ${COLORS.map(col => `
+              <button type="button" class="color-pick ${col === (cat.color || DEFAULT_COLOR) ? 'active' : ''}" data-color="${col}" style="background:${col}"></button>
+            `).join('')}
+          </div>
+        </div>
         <div class="flex gap-8">
           <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Create'}</button>
           <button type="button" class="btn btn-outline" id="cat-cancel">Cancel</button>
@@ -144,12 +162,21 @@ function showForm(container, cat) {
   `;
 
   let selectedIcon = cat.icon;
+  let selectedColor = cat.color || DEFAULT_COLOR;
 
   area.querySelectorAll('.icon-pick').forEach(btn => {
     btn.addEventListener('click', () => {
       area.querySelectorAll('.icon-pick').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedIcon = btn.dataset.icon;
+    });
+  });
+
+  area.querySelectorAll('.color-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      area.querySelectorAll('.color-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedColor = btn.dataset.color;
     });
   });
 
@@ -163,6 +190,7 @@ function showForm(container, cat) {
       name: document.getElementById('cat-name').value.trim(),
       type: document.getElementById('cat-type').value,
       icon: selectedIcon,
+      color: selectedColor,
       is_default: false,
     };
     try {

@@ -9,7 +9,6 @@ import { openSheet } from '../sheet.js';
 let chartInstances = [];
 const GRID = '#E2E6EC';
 const TICK = '#6B7280';
-const CAT_COLORS = ['#1E7F5C', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16'];
 
 export async function renderDashboard(container) {
   chartInstances.forEach(c => c.destroy());
@@ -51,7 +50,7 @@ export async function renderDashboard(container) {
   const byCat = {};
   monthTx.filter(t => t.type === 'expense').forEach(t => {
     const name = t.categories?.name || 'Other';
-    byCat[name] = byCat[name] || { amount: 0, icon: t.categories?.icon || 'ph-tag' };
+    byCat[name] = byCat[name] || { amount: 0, icon: t.categories?.icon || 'ph-tag', color: t.categories?.color || '#6B7280' };
     byCat[name].amount += parseFloat(t.amount);
   });
   const topCats = Object.entries(byCat).sort((a, b) => b[1].amount - a[1].amount).slice(0, 4);
@@ -83,10 +82,10 @@ export async function renderDashboard(container) {
         <div class="cat-bars">
           ${topCats.length ? topCats.map(([name, c]) => `
             <div class="cat-bar">
-              <i class="ph ${c.icon}"></i>
+              <i class="ph ${c.icon}" style="color:${c.color}"></i>
               <div>
                 <div class="fs-12">${name}</div>
-                <div class="track"><div class="fill" style="width:${Math.max(6, c.amount / maxCat * 100)}%"></div></div>
+                <div class="track"><div class="fill" style="width:${Math.max(6, c.amount / maxCat * 100)}%;background:${c.color}"></div></div>
               </div>
               <span class="amt">${formatMoney(c.amount, 'EUR', 0)}</span>
             </div>
@@ -143,10 +142,12 @@ function openCategorySheet(monthTx) {
   const byCat = {};
   monthTx.filter(t => t.type === 'expense').forEach(t => {
     const name = t.categories?.name || 'Other';
-    byCat[name] = (byCat[name] || 0) + parseFloat(t.amount);
+    byCat[name] = byCat[name] || { amount: 0, color: t.categories?.color || '#6B7280' };
+    byCat[name].amount += parseFloat(t.amount);
   });
   const labels = Object.keys(byCat);
-  const data = Object.values(byCat);
+  const data = labels.map(n => byCat[n].amount);
+  const colors = labels.map(n => byCat[n].color);
 
   const { el, close } = openSheet(`
     <h3>Spending breakdown</h3>
@@ -159,7 +160,7 @@ function openCategorySheet(monthTx) {
   if (ctx) {
     new Chart(ctx, {
       type: 'doughnut',
-      data: { labels, datasets: [{ data, backgroundColor: CAT_COLORS.slice(0, labels.length), borderWidth: 0 }] },
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: TICK, padding: 10, font: { size: 12 } } } } },
     });
   }

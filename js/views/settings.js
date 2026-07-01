@@ -36,9 +36,19 @@ function draw(container) {
 
     <button class="btn btn-primary mt-12" id="add-account-btn">+ Add Account</button>
 
+    <h3 class="section-title" style="margin-top:32px">Categories</h3>
+    <div class="card">
+      <button class="btn btn-outline" id="cats-btn" style="width:100%">Manage categories ▸</button>
+    </div>
+
     <h3 class="section-title" style="margin-top:32px">Data</h3>
     <div class="card">
       <button class="btn btn-outline" id="export-btn" style="width:100%">Export Transactions (CSV)</button>
+    </div>
+
+    <h3 class="section-title" style="margin-top:32px">Help</h3>
+    <div class="card">
+      <button class="btn btn-outline" id="help-btn" style="width:100%">Help &amp; FAQ ▸</button>
     </div>
 
     <h3 class="section-title" style="margin-top:32px">Session</h3>
@@ -86,6 +96,10 @@ function draw(container) {
       }
     });
   });
+
+  // Navigate to Categories / Help (reachable from Settings, not the tab bar)
+  container.querySelector('#cats-btn').addEventListener('click', () => { location.hash = 'categories'; });
+  container.querySelector('#help-btn').addEventListener('click', () => { location.hash = 'help'; });
 
   // Export
   container.querySelector('#export-btn').addEventListener('click', exportCSV);

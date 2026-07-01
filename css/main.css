@@ -63,7 +63,8 @@ input, select, textarea { font: inherit; color: inherit; }
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   z-index: 10;
 }
 .tab {
@@ -184,6 +185,14 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .icon-pick.active { border-color: var(--accent); color: var(--accent); }
 
+/* Colour picker swatches */
+.color-pick {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 3px solid transparent; box-shadow: inset 0 0 0 2px var(--surface);
+  transition: border-color .15s;
+}
+.color-pick.active { border-color: var(--text); }
+
 /* Filter row */
 .filter-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .filter-select { font-size: 13px; padding: 8px 10px; }
@@ -252,7 +261,7 @@ input, select, textarea { font: inherit; color: inherit; }
   .tabbar {
     top: 0; bottom: 0; left: 0;
     width: 210px; height: 100dvh;
-    grid-template-columns: 1fr; grid-template-rows: repeat(5, auto);
+    grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr;
     align-content: start;
     padding-top: calc(var(--top-h) + 16px); padding-bottom: 0;
     border-top: none; border-right: 1px solid var(--border);

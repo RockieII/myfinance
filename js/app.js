@@ -9,6 +9,7 @@ import { renderTransactions } from './views/transactions.js';
 import { renderStocks } from './views/stocks.js';
 import { renderCategories } from './views/categories.js';
 import { renderSettings } from './views/settings.js';
+import { renderHelp } from './views/help.js';
 
 // Service worker
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
@@ -33,6 +34,7 @@ const views = {
   stocks:       renderStocks,
   categories:   renderCategories,
   settings:     renderSettings,
+  help:         renderHelp,
 };
 
 const TAB_LABELS = {
@@ -41,10 +43,12 @@ const TAB_LABELS = {
   stocks: 'Stocks',
   categories: 'Categories',
   settings: 'Settings',
+  help: 'Help & FAQ',
 };
 
-// Outlier pages allowed to scroll inside the fixed shell (long lists).
-const SCROLLABLE_VIEWS = new Set(['categories', 'settings']);
+// Outlier pages allowed to scroll inside the fixed shell (long lists / docs).
+// (Categories + Help are reachable from Settings, not the tab bar.)
+const SCROLLABLE_VIEWS = new Set(['categories', 'settings', 'help']);
 
 function getTab() {
   return location.hash.replace('#', '') || 'dashboard';
