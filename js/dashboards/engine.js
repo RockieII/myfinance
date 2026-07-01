@@ -5,6 +5,9 @@
 
 import * as DB from '../db.js';
 import { WIDGETS } from './registry.js';
+import { getProfiles } from '../profiles.js';
+
+export const MAX_H = 4;
 
 // A sensible built-in page until the user composes their own (Phase 5 adds create/edit).
 export const DEFAULT_LAYOUT = [
@@ -63,7 +66,7 @@ export async function loadContext() {
   });
 
   return {
-    transactions, accounts, stocks, priceMap,
+    transactions, accounts, stocks, priceMap, profiles: getProfiles(), monthTx,
     months, monthLabels: months.map(monthLabel), series, netWorth, trendPct,
     monthIncome, monthExpense, net, savingsRate,
     topCats, maxCat, accountBalances, portfolioValue,
@@ -71,22 +74,23 @@ export async function loadContext() {
   };
 }
 
-export function renderGrid(container, layout, ctx) {
+export function renderGrid(container, layout, ctx, opts = {}) {
+  const { editing = false, onChange } = opts;
   charts.forEach(c => { try { c.destroy(); } catch (_) {} });
   charts = [];
   ctx.addChart = (c) => charts.push(c);
 
   const cols = getCols();
   container.innerHTML = `
-    <div class="grid-canvas" style="--cols:${cols}">
+    <div class="grid-canvas ${editing ? 'editing' : ''}" style="--cols:${cols}">
       ${layout.map(item => {
         const w = WIDGETS[item.type];
         if (!w) return '';
         const cw = Math.min(Math.max(item.w, w.minW), cols);
         const ch = Math.max(item.h, w.minH);
         return `
-          <div class="widget" style="grid-column:span ${cw};grid-row:span ${ch}">
-            <div class="widget-head">${w.title}</div>
+          <div class="widget" data-id="${item.id}" style="grid-column:span ${cw};grid-row:span ${ch}">
+            <div class="widget-head"><span class="widget-title">${w.title}</span>${editing ? editControls() : ''}</div>
             <div class="widget-body" data-body="${item.id}"></div>
           </div>`;
       }).join('')}
@@ -100,6 +104,40 @@ export function renderGrid(container, layout, ctx) {
       if (w && el) { try { w.render(el, ctx); } catch (err) { el.innerHTML = `<div class="empty fs-12">Widget error</div>`; } }
     });
   });
+
+  // Edit controls: resize (span cells) / remove → emit a new layout.
+  if (editing && typeof onChange === 'function') {
+    container.querySelectorAll('.widget').forEach(wEl => {
+      const id = wEl.dataset.id;
+      const item = layout.find(x => x.id === id);
+      if (!item) return;
+      const wdef = WIDGETS[item.type];
+      wEl.querySelectorAll('[data-act]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const act = btn.dataset.act;
+          if (act === 'rm') { onChange(layout.filter(x => x.id !== id)); return; }
+          const next = layout.map(x => ({ ...x }));
+          const it = next.find(x => x.id === id);
+          if (act === 'w+') it.w = Math.min(cols, (it.w || wdef.minW) + 1);
+          if (act === 'w-') it.w = Math.max(wdef.minW, (it.w || wdef.minW) - 1);
+          if (act === 'h+') it.h = Math.min(MAX_H, (it.h || wdef.minH) + 1);
+          if (act === 'h-') it.h = Math.max(wdef.minH, (it.h || wdef.minH) - 1);
+          onChange(next);
+        });
+      });
+    });
+  }
+}
+
+function editControls() {
+  return `<span class="widget-ctrls">
+    <button class="wc" data-act="w-" title="Narrower">–W</button>
+    <button class="wc" data-act="w+" title="Wider">+W</button>
+    <button class="wc" data-act="h-" title="Shorter">–H</button>
+    <button class="wc" data-act="h+" title="Taller">+H</button>
+    <button class="wc wc-rm" data-act="rm" title="Remove">✕</button>
+  </span>`;
 }
 
 // Helpers

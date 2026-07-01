@@ -89,4 +89,39 @@ export const WIDGETS = {
         : '<div class="empty">No accounts.</div>';
     },
   },
+
+  // --- Multiple: need ≥2 profiles; use per-transaction profile_id ---
+  'by-person-spending': {
+    title: 'Spending by person · this month', section: 'multiple', minW: 2, minH: 2,
+    render(el, ctx) {
+      const profs = ctx.profiles || [];
+      if (profs.length < 2) { el.innerHTML = '<div class="empty fs-12">Add 2+ profiles (Settings) to use this.</div>'; return; }
+      const rows = profs.map(p => ({ p, amt: ctx.monthTx.filter(t => t.type === 'expense' && t.profile_id === p.id).reduce((s, t) => s + parseFloat(t.amount), 0) }));
+      const max = Math.max(1, ...rows.map(r => r.amt));
+      el.innerHTML = `<div class="cat-bars">${rows.map(({ p, amt }) => `
+        <div class="cat-bar">
+          <span style="width:14px;height:14px;border-radius:50%;background:${p.color};display:inline-block"></span>
+          <div><div class="fs-12">${p.name}</div>
+            <div class="track"><div class="fill" style="width:${Math.max(6, amt / max * 100)}%;background:${p.color}"></div></div></div>
+          <span class="amt">${formatMoney(amt, 'EUR', 0)}</span>
+        </div>`).join('')}</div>`;
+    },
+  },
+
+  'by-person-net': {
+    title: 'Net by person · this month', section: 'multiple', minW: 2, minH: 1,
+    render(el, ctx) {
+      const profs = ctx.profiles || [];
+      if (profs.length < 2) { el.innerHTML = '<div class="empty fs-12">Add 2+ profiles (Settings) to use this.</div>'; return; }
+      el.innerHTML = `<div class="w-list">${profs.map(p => {
+        const inc = ctx.monthTx.filter(t => t.type === 'income' && t.profile_id === p.id).reduce((s, t) => s + parseFloat(t.amount), 0);
+        const exp = ctx.monthTx.filter(t => t.type === 'expense' && t.profile_id === p.id).reduce((s, t) => s + parseFloat(t.amount), 0);
+        const net = inc - exp;
+        return `<div class="flex-between" style="padding:5px 0;border-bottom:1px solid var(--border)">
+          <span class="fs-12"><span style="color:${p.color}">●</span> ${p.name}</span>
+          <span class="fw-600 money ${net >= 0 ? 'text-up' : 'text-down'}">${net >= 0 ? '+' : ''}${formatMoney(net, 'EUR', 0)}</span>
+        </div>`;
+      }).join('')}</div>`;
+    },
+  },
 };
