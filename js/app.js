@@ -1,103 +1,101 @@
 // MyFinance — Main App
-// Initializes Supabase, handles auth gate, routes between views.
+// The sidebar (dashboard pages, in folders) is the primary nav; Data + Settings live in the header.
+// Routes: '' / 'dashboard' → the selected dashboard page; 'data' / 'settings' / 'categories' / 'help'.
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY, PLATFORM_V2 } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { initDB } from './db.js';
-import { renderLogin, getSession, signOut } from './auth.js';
-import { renderDashboard } from './views/dashboard.js';
+import { renderLogin, getSession } from './auth.js';
 import { renderDashboards } from './views/dashboards.js';
-import { renderTransactions } from './views/transactions.js';
-import { renderStocks } from './views/stocks.js';
+import { renderData } from './views/data.js';
 import { renderCategories } from './views/categories.js';
 import { renderSettings } from './views/settings.js';
 import { renderHelp } from './views/help.js';
 import { loadProfiles } from './profiles.js';
+import * as nav from './nav.js';
 
 // Service worker
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js');
 }
 
-// Initialize Supabase
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 initDB(supabase);
 
 // DOM refs
 const viewEl = document.getElementById('view');
 const tabLabel = document.getElementById('tab-label');
-const tabs = document.querySelectorAll('.tab');
-const topbar = document.querySelector('.topbar');
-const tabbar = document.querySelector('.tabbar');
+const sidebarEl = document.getElementById('sidebar');
+const backdrop = document.getElementById('nav-backdrop');
 
-// View registry
-const views = {
-  dashboard:    renderDashboard,
-  transactions: renderTransactions,
-  stocks:       renderStocks,
-  categories:   renderCategories,
-  settings:     renderSettings,
-  help:         renderHelp,
-};
+const SPECIAL = { data: renderData, settings: renderSettings, categories: renderCategories, help: renderHelp };
+const LABELS = { data: 'Data', settings: 'Settings', categories: 'Categories', help: 'Help & FAQ' };
+const SCROLLABLE_VIEWS = new Set(['settings', 'categories', 'help']);
 
-const TAB_LABELS = {
-  dashboard: 'Dashboard',
-  transactions: 'Transactions',
-  stocks: 'Stocks',
-  categories: 'Categories',
-  settings: 'Settings',
-  help: 'Help & FAQ',
-};
+const getTab = () => location.hash.replace('#', '');   // '' = dashboard
+const isDashTab = (t) => t === '' || t === 'dashboard';
+const activeKey = () => (isDashTab(getTab()) ? 'p:' + nav.getCurrentId() : getTab());
 
-// Outlier pages allowed to scroll inside the fixed shell (long lists / docs).
-// (Categories + Help are reachable from Settings, not the tab bar.)
-const SCROLLABLE_VIEWS = new Set(['categories', 'settings', 'help']);
-
-// Platform v2 (grid dashboards). OFF by default; opt-in per device via a Settings→Developer toggle.
-const platformV2 = PLATFORM_V2 || localStorage.getItem('mf.platformV2') === '1';
-
-function getTab() {
-  return location.hash.replace('#', '') || 'dashboard';
+function renderSidebarNow() {
+  nav.renderSidebar(sidebarEl, activeKey(), {
+    onSelectPage: (id) => {
+      nav.setCurrent(id);
+      closeDrawer();
+      if (isDashTab(getTab())) render(); else location.hash = 'dashboard';
+    },
+    onAddPage: async () => {
+      const row = await nav.createPage({ name: 'New page', icon: 'ph-squares-four', theme: 'default', layout: [] });
+      nav.setCurrent(row.id);
+      closeDrawer();
+      if (isDashTab(getTab())) render(); else location.hash = 'dashboard';
+    },
+  });
 }
 
 async function render() {
-  const tab = getTab();
-  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  tabLabel.textContent = TAB_LABELS[tab] || tab;
-  viewEl.classList.toggle('scrollable', SCROLLABLE_VIEWS.has(tab));
+  const t = getTab();
+  // Leaving the dashboard invalidates its cached data context, so returning (e.g. after a Data
+  // edit) reloads; switching between pages stays cached (no refetch per page tap).
+  if (!isDashTab(t)) window.invalidateDashboards?.();
+  viewEl.classList.toggle('scrollable', SCROLLABLE_VIEWS.has(t));
   viewEl.innerHTML = '';
+  renderSidebarNow();
 
-  // Platform v2: the Dashboard tab renders the new grid dashboard.
-  const viewFn = (tab === 'dashboard' && platformV2) ? renderDashboards : views[tab];
-  if (viewFn) {
-    await viewFn(viewEl);
+  if (isDashTab(t)) {
+    tabLabel.textContent = nav.getPage(nav.getCurrentId())?.name || 'Dashboard';
+    await renderDashboards(viewEl);
   } else {
-    viewEl.innerHTML = '<div class="empty">Unknown view.</div>';
+    tabLabel.textContent = LABELS[t] || t;
+    const fn = SPECIAL[t];
+    if (fn) await fn(viewEl); else viewEl.innerHTML = '<div class="empty">Unknown view.</div>';
   }
 }
 
-// Tab click handlers
-tabs.forEach(t => t.addEventListener('click', () => {
-  location.hash = t.dataset.tab;
-}));
 window.addEventListener('hashchange', render);
 
-// Keep the app-wide profile cache warm (used by the transaction form + future widgets).
-// Called on boot and after profile edits in Settings.
-window.refreshProfiles = loadProfiles;
+// Globals used by views to refresh cross-cutting UI.
+window.refreshProfiles = loadProfiles;      // after profile edits (Settings)
+window.refreshNav = renderSidebarNow;        // after page rename/icon/folder edits
+window.rerenderApp = render;                 // after page create/delete (navigate + refresh)
 
-// Header: settings gear + retractable sidebar (desktop).
+// Header buttons
+document.getElementById('data-btn').addEventListener('click', () => { location.hash = 'data'; });
 document.getElementById('settings-btn').addEventListener('click', () => { location.hash = 'settings'; });
 
 const sidebarToggle = document.getElementById('sidebar-toggle');
 if (localStorage.getItem('mf.sidebarCollapsed') === '1') document.body.classList.add('sidebar-collapsed');
 sidebarToggle.addEventListener('click', () => {
-  const collapsed = document.body.classList.toggle('sidebar-collapsed');
-  if (collapsed) localStorage.setItem('mf.sidebarCollapsed', '1');
-  else localStorage.removeItem('mf.sidebarCollapsed');
+  if (window.innerWidth >= 769) {   // desktop: collapse to icon rail
+    const c = document.body.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('mf.sidebarCollapsed', c ? '1' : '0');
+  } else {                          // mobile: open/close the drawer
+    document.body.classList.toggle('nav-open');
+  }
 });
+function closeDrawer() { document.body.classList.remove('nav-open'); }
+backdrop.addEventListener('click', closeDrawer);
 
 // Toast utility (globally available)
-window.showToast = function(msg, duration = 2500) {
+window.showToast = function (msg, duration = 2500) {
   const toast = document.getElementById('toast');
   toast.textContent = msg;
   toast.classList.add('show');
@@ -107,9 +105,8 @@ window.showToast = function(msg, duration = 2500) {
 
 // Auth gate
 async function enterApp() {
-  topbar.style.display = '';
-  tabbar.style.display = '';
-  await loadProfiles();
+  document.body.classList.add('authed');
+  await Promise.all([loadProfiles(), nav.loadNav()]);
   render();
 }
 
@@ -118,20 +115,15 @@ async function boot() {
   if (session) {
     enterApp();
   } else {
-    topbar.style.display = 'none';
-    tabbar.style.display = 'none';
-    renderLogin(viewEl, () => {
-      location.hash = 'dashboard';
-      enterApp();
-    });
+    document.body.classList.remove('authed');
+    // Note: don't reset the hash here — a hashchange during enterApp's async load would race a
+    // second render() before nav loads (risking a duplicate default page). enterApp renders once.
+    renderLogin(viewEl, () => enterApp());
   }
 }
 
-// Listen for auth state changes (e.g., token refresh, logout)
 supabase.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') {
-    boot();
-  }
+  if (event === 'SIGNED_OUT') { document.body.classList.remove('authed'); boot(); }
 });
 
 boot();

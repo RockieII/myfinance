@@ -78,8 +78,6 @@ function draw(container) {
           (3 accounts, 24 months, sample stocks). Wipe removes only tagged data — real records are never touched.</div>
         <button class="btn btn-outline" id="gen-data-btn" style="width:100%">Generate test data</button>
         <button class="btn btn-danger" id="wipe-data-btn" style="width:100%;margin-top:8px">Wipe test data</button>
-        <div class="fs-12 text-dim" style="margin:12px 0 6px">Beta</div>
-        <button class="btn btn-outline" id="platform-toggle" style="width:100%">${localStorage.getItem('mf.platformV2') === '1' ? 'Disable new dashboard (beta)' : 'Preview new dashboard (beta)'}</button>
       </div>
     ` : ''}
   `;
@@ -167,13 +165,6 @@ function draw(container) {
         genBtn.disabled = false;
         genBtn.textContent = label;
       }
-    });
-
-    const platformBtn = container.querySelector('#platform-toggle');
-    platformBtn.addEventListener('click', () => {
-      const on = localStorage.getItem('mf.platformV2') === '1';
-      if (on) localStorage.removeItem('mf.platformV2'); else localStorage.setItem('mf.platformV2', '1');
-      location.reload();
     });
 
     const wipeBtn = container.querySelector('#wipe-data-btn');

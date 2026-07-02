@@ -1,47 +1,46 @@
-// MyFinance — Dashboards (Platform v2)
-// Multiple grid pages the user composes: add/resize/remove widgets, switch/create/rename/delete
-// pages, and pick a page theme (colour + font). Everything persists to the `dashboards` table.
+// MyFinance — Dashboards (the platform)
+// Renders the sidebar-selected dashboard page as a grid of widgets; Edit mode adds/resizes/removes
+// widgets; page options set name/icon/folder/theme, add pages (blank or template), delete.
+// Pages/folders live in js/nav.js (the sidebar owns them); this view reads/updates via nav.
 
-import * as DB from '../db.js';
 import { loadContext, renderGrid, getCols } from '../dashboards/engine.js';
 import { WIDGETS } from '../dashboards/registry.js';
 import { THEMES, getTheme } from '../dashboards/themes.js';
 import { PREBUILT } from '../dashboards/prebuilt.js';
 import { openSheet } from '../sheet.js';
+import { iconPickerHTML, bindIconPicker } from '../icons.js';
+import * as nav from '../nav.js';
 
 let ctx = null;
-let pages = [];
-let idx = 0;
 let editing = false;
 let resizeCols = null;
 let hostContainer = null;
 let resizeBound = false;
 
+// Cache the data context across dashboard page switches (they only differ in layout/theme).
+// app.render() calls this when navigating away, so returning after a Data/Settings edit reloads.
+window.invalidateDashboards = () => { ctx = null; };
+
 const uid = () => 'w' + Math.random().toString(36).slice(2, 8);
 const instantiate = (layout) => layout.map(it => ({ id: uid(), ...it }));
-const current = () => pages[idx];
 
 export async function renderDashboards(container) {
-  ctx = await loadContext();
+  if (!ctx) ctx = await loadContext();
 
-  try { pages = await DB.getAll('dashboards', { order: 'position', ascending: true }); } catch (_) { pages = []; }
-  pages.forEach(p => { if (!Array.isArray(p.layout)) p.layout = []; });
-
-  if (!pages.length) {
+  // Ensure at least one page exists (first-run seeds the Overview template).
+  if (!nav.getPages().length) {
     const tpl = PREBUILT[0];
     try {
-      const row = await DB.create('dashboards', { name: tpl.name, theme: tpl.theme, layout: instantiate(tpl.layout), position: 0 });
-      pages = [row];
-    } catch (_) {
-      pages = [{ id: null, name: PREBUILT[0].name, theme: PREBUILT[0].theme, layout: instantiate(PREBUILT[0].layout) }];
-    }
+      const row = await nav.createPage({ name: tpl.name, theme: tpl.theme, icon: 'ph-chart-pie-slice', layout: instantiate(tpl.layout) });
+      nav.setCurrent(row.id);
+      window.refreshNav?.();
+    } catch (_) { /* offline — show empty state */ }
   }
-  idx = 0;
+
   editing = false;
   hostContainer = container;
   draw(container);
 
-  // Single managed resize listener (re-render only when the column breakpoint changes on the dashboard tab).
   resizeCols = getCols();
   if (!resizeBound) { window.addEventListener('resize', onResize); resizeBound = true; }
 }
@@ -52,16 +51,18 @@ function onResize() {
 }
 
 function draw(container) {
-  const page = current();
+  const page = nav.getPage(nav.getCurrentId());
+  if (!page) {
+    container.innerHTML = '<div class="empty">No dashboard yet. Use “+ Page” in the sidebar to create one.</div>';
+    return;
+  }
   const theme = getTheme(page.theme);
   ctx.accent = theme.accent;
   ctx.font = theme.font;
 
   container.innerHTML = `
     <div class="dash-bar">
-      <select id="page-sel" class="page-sel" aria-label="Dashboard page">
-        ${pages.map((p, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>${p.name}</option>`).join('')}
-      </select>
+      <span class="fs-12 text-dim">${editing ? 'Editing — resize –W/+W/–H/+H, ✕ removes' : page.name}</span>
       <div class="flex gap-8">
         ${editing ? '<button id="add-widget" class="btn btn-outline btn-sm">+ Widget</button>' : ''}
         ${editing ? '<button id="page-opts" class="btn btn-outline btn-sm" title="Page options">⋯</button>' : ''}
@@ -73,7 +74,6 @@ function draw(container) {
 
   renderGrid(container.querySelector('#grid-host'), page.layout, ctx, { editing, onChange: onLayoutChange(container) });
 
-  container.querySelector('#page-sel').addEventListener('change', (e) => { idx = parseInt(e.target.value); draw(container); });
   container.querySelector('#edit-toggle').addEventListener('click', () => { editing = !editing; draw(container); });
   container.querySelector('#add-widget')?.addEventListener('click', () => openLibrary(container));
   container.querySelector('#page-opts')?.addEventListener('click', () => openPageOptions(container));
@@ -81,17 +81,12 @@ function draw(container) {
 
 function onLayoutChange(container) {
   return async (newLayout) => {
-    current().layout = newLayout;
+    const page = nav.getPage(nav.getCurrentId());
+    page.layout = newLayout;
     draw(container);
-    await savePage();
+    try { await nav.updatePage(page.id, { layout: newLayout }); }
+    catch (err) { showToast('Save failed: ' + err.message); }
   };
-}
-
-async function savePage() {
-  const p = current();
-  if (!p.id) return;
-  try { await DB.update('dashboards', p.id, { name: p.name, theme: p.theme, layout: p.layout }); }
-  catch (err) { showToast('Save failed: ' + err.message); }
 }
 
 function openLibrary(container) {
@@ -109,96 +104,78 @@ function openLibrary(container) {
   `);
   el.querySelector('#lib-close').addEventListener('click', close);
   el.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', async () => {
-    const type = b.dataset.add;
-    const w = WIDGETS[type];
-    current().layout = [...current().layout, { id: uid(), type, w: w.minW, h: w.minH }];
+    const w = WIDGETS[b.dataset.add];
+    const page = nav.getPage(nav.getCurrentId());
+    const layout = [...page.layout, { id: uid(), type: b.dataset.add, w: w.minW, h: w.minH }];
+    page.layout = layout;
     close();
     draw(container);
-    await savePage();
+    try { await nav.updatePage(page.id, { layout }); } catch (err) { showToast('Save failed: ' + err.message); }
   }));
 }
 
 function openPageOptions(container) {
-  const p = current();
+  const page = nav.getPage(nav.getCurrentId());
+  const folders = nav.getFolders();
   const { el, close } = openSheet(`
     <h3>Page options</h3>
-
-    <div class="form-group">
-      <label>Name</label>
-      <input id="pg-name" class="form-control" value="${p.name}">
+    <div class="form-group"><label>Name</label><input id="pg-name" class="form-control" value="${page.name}"></div>
+    <div class="form-group"><label>Folder</label>
+      <select id="pg-folder" class="form-control">
+        <option value="">— None (top level) —</option>
+        ${folders.map(f => `<option value="${f.id}" ${f.id === page.folder_id ? 'selected' : ''}>${f.name}</option>`).join('')}
+      </select>
     </div>
-
+    <div class="form-group"><label>Icon</label>${iconPickerHTML(page.icon || 'ph-squares-four')}</div>
     <div class="section-title" style="margin-top:0">Theme</div>
     <div class="theme-grid">
-      ${Object.entries(THEMES).map(([id, t]) => `
-        <button class="theme-chip ${id === p.theme ? 'active' : ''}" data-theme="${id}" title="${t.name}">
-          <span class="theme-dot" style="background:${t.accent}"></span>${t.name}
-        </button>`).join('')}
+      ${Object.entries(THEMES).map(([id, t]) => `<button class="theme-chip ${id === page.theme ? 'active' : ''}" data-theme="${id}"><span class="theme-dot" style="background:${t.accent}"></span>${t.name}</button>`).join('')}
     </div>
-
     <div class="section-title">Add a page</div>
     <button class="btn btn-outline mb-12" style="width:100%" data-new="blank">Blank page</button>
     ${PREBUILT.map(t => `<button class="btn btn-outline mb-12" style="width:100%" data-new="${t.id}">${t.name} <span class="text-dim fs-12">· template</span></button>`).join('')}
-
     <div class="flex gap-8" style="margin-top:8px">
       <button class="btn btn-primary" id="pg-save" style="flex:1">Save</button>
-      ${pages.length > 1 ? '<button class="btn btn-danger" id="pg-del">Delete page</button>' : ''}
+      ${nav.getPages().length > 1 ? '<button class="btn btn-danger" id="pg-del">Delete</button>' : ''}
     </div>
   `);
 
-  // Theme selection (applies live on save).
-  let chosenTheme = p.theme;
-  el.querySelectorAll('.theme-chip').forEach(chip => chip.addEventListener('click', () => {
-    el.querySelectorAll('.theme-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    chosenTheme = chip.dataset.theme;
+  const getIcon = bindIconPicker(el, page.icon || 'ph-squares-four');
+  let theme = page.theme;
+  el.querySelectorAll('.theme-chip').forEach(c => c.addEventListener('click', () => {
+    el.querySelectorAll('.theme-chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active'); theme = c.dataset.theme;
   }));
 
   el.querySelector('#pg-save').addEventListener('click', async () => {
-    p.name = el.querySelector('#pg-name').value.trim() || p.name;
-    p.theme = chosenTheme;
+    const name = el.querySelector('#pg-name').value.trim() || page.name;
+    const folder_id = el.querySelector('#pg-folder').value || null;
     close();
+    try { await nav.updatePage(page.id, { name, icon: getIcon(), theme, folder_id }); } catch (err) { showToast('Save failed: ' + err.message); }
+    window.refreshNav?.();
     draw(container);
-    await savePage();
   });
 
   el.querySelector('#pg-del')?.addEventListener('click', async () => {
     if (!confirm('Delete this page?')) return;
     close();
-    await deletePage(container);
+    try { await nav.deletePage(page.id); } catch (err) { showToast('Delete failed: ' + err.message); return; }
+    window.rerenderApp?.();
   });
 
   el.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', async () => {
     const which = b.dataset.new;
+    const tpl = which === 'blank' ? null : PREBUILT.find(t => t.id === which);
     close();
-    await addPage(container, which);
+    try {
+      const row = await nav.createPage({
+        name: tpl ? tpl.name : 'New page',
+        theme: tpl ? tpl.theme : 'default',
+        icon: 'ph-squares-four',
+        layout: tpl ? instantiate(tpl.layout) : [],
+      });
+      nav.setCurrent(row.id);
+      window.rerenderApp?.();
+    } catch (err) { showToast('Could not add page: ' + err.message); }
   }));
-}
-
-async function addPage(container, which) {
-  const tpl = which === 'blank' ? null : PREBUILT.find(t => t.id === which);
-  const data = {
-    name: tpl ? tpl.name : 'New page',
-    theme: tpl ? tpl.theme : 'default',
-    layout: tpl ? instantiate(tpl.layout) : [],
-    // Unique position (pages.length collides after a delete) → stable ordering across reloads.
-    position: pages.length ? Math.max(...pages.map(p => p.position ?? 0)) + 1 : 0,
-  };
-  try {
-    const row = await DB.create('dashboards', data);
-    pages.push(row);
-    idx = pages.length - 1;
-    editing = true;
-    draw(container);
-  } catch (err) { showToast('Could not add page: ' + err.message); }
-}
-
-async function deletePage(container) {
-  const p = current();
-  try {
-    if (p.id) await DB.remove('dashboards', p.id);
-    pages.splice(idx, 1);
-    idx = Math.max(0, idx - 1);
-    draw(container);
-  } catch (err) { showToast('Could not delete: ' + err.message); }
 }

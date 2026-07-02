@@ -92,4 +92,36 @@ DROP TABLE IF EXISTS dashboards;
 
 ---
 
-<!-- Future entries (Phase 4/5) get appended here with UP/DOWN. -->
+## 004 — folders + page icon/folder  (sidebar nav)
+The sidebar becomes the primary nav: dashboard pages grouped in one-level folders, each page/folder
+with a chosen icon. Additive + reversible; `folder_id` nullable (NULL = top-level page).
+
+**UP**
+```sql
+CREATE TABLE IF NOT EXISTS folders (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name       text NOT NULL,
+  icon       text NOT NULL DEFAULT 'ph-folder',
+  position   int  NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE folders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own folders" ON folders FOR ALL
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id);
+
+ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS icon text NOT NULL DEFAULT 'ph-squares-four';
+ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS folder_id uuid REFERENCES folders(id) ON DELETE SET NULL;
+```
+
+**DOWN**
+```sql
+ALTER TABLE dashboards DROP COLUMN IF EXISTS folder_id;
+ALTER TABLE dashboards DROP COLUMN IF EXISTS icon;
+DROP TABLE IF EXISTS folders;
+```
+
+---
+
+<!-- Future entries get appended here with UP/DOWN. -->

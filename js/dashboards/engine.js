@@ -65,11 +65,27 @@ export async function loadContext() {
     return { name: a.name, currency: a.currency, balance: parseFloat(a.initial_balance) + sum(at, 'income') - sum(at, 'expense') };
   });
 
+  // Transaction + stock visuals
+  const recentTx = [...transactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 10);
+  const monthlyIncome = months.map(m => sum(transactions.filter(t => t.date.startsWith(m)), 'income'));
+  const monthlyExpense = months.map(m => sum(transactions.filter(t => t.date.startsWith(m)), 'expense'));
+  const holdings = stocks.map(st => {
+    const price = priceMap[st.ticker] || st.purchase_price;
+    const value = st.quantity * price;
+    const cost = st.quantity * st.purchase_price;
+    const gain = value - cost;
+    return { ticker: st.ticker, name: st.name, value, gain, gainPct: cost > 0 ? gain / cost * 100 : 0, currency: st.currency };
+  });
+  const portfolioCost = stocks.reduce((s, st) => s + st.quantity * st.purchase_price, 0);
+  const portfolioGain = portfolioValue - portfolioCost;
+
   return {
     transactions, accounts, stocks, priceMap, profiles: getProfiles(), monthTx,
     months, monthLabels: months.map(monthLabel), series, netWorth, trendPct,
     monthIncome, monthExpense, net, savingsRate,
     topCats, maxCat, accountBalances, portfolioValue,
+    recentTx, monthlyIncome, monthlyExpense, holdings,
+    portfolioGain, portfolioGainPct: portfolioCost > 0 ? portfolioGain / portfolioCost * 100 : 0,
     accent: getTheme('default').accent,   // overridden per-page by the active theme
     font: '',                             // overridden per-page by the active theme
     addChart: () => {},

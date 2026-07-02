@@ -92,6 +92,63 @@ export const WIDGETS = {
     },
   },
 
+  'recent-tx': {
+    title: 'Recent transactions', section: 'solo', minW: 2, minH: 2,
+    render(el, ctx) {
+      el.innerHTML = ctx.recentTx.length
+        ? `<div class="w-list">${ctx.recentTx.map(t => {
+            const inc = t.type === 'income';
+            const col = t.categories?.color || 'var(--accent)';
+            return `<div class="flex-between" style="padding:5px 0;border-bottom:1px solid var(--border)">
+              <span class="fs-12" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
+                <i class="ph ${t.categories?.icon || 'ph-tag'}" style="color:${col}"></i> ${t.description || t.categories?.name || ''}</span>
+              <span class="fw-600 money ${inc ? 'text-up' : 'text-down'}" style="flex-shrink:0;margin-left:8px">${inc ? '+' : '-'}${formatMoney(t.amount)}</span>
+            </div>`;
+          }).join('')}</div>`
+        : '<div class="empty">No transactions.</div>';
+    },
+  },
+
+  'io-bars': {
+    title: 'Income vs Expenses · 6 months', section: 'solo', minW: 2, minH: 2,
+    render(el, ctx) {
+      el.innerHTML = `<div class="chart-box" style="flex:1;min-height:0"><canvas></canvas></div>`;
+      const acc = ctx.accent || ACCENT;
+      ctx.addChart(new Chart(el.querySelector('canvas'), {
+        type: 'bar',
+        data: { labels: ctx.monthLabels, datasets: [
+          { label: 'In', data: ctx.monthlyIncome, backgroundColor: acc, borderRadius: 3 },
+          { label: 'Out', data: ctx.monthlyExpense, backgroundColor: '#C6304B', borderRadius: 3 },
+        ] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: TICK, font: { size: 9 } }, grid: { display: false } }, y: { ticks: { color: TICK, font: { size: 9 }, maxTicksLimit: 4 }, grid: { color: GRID } } } },
+      }));
+    },
+  },
+
+  'portfolio': {
+    title: 'Portfolio', section: 'solo', minW: 1, minH: 1,
+    render(el, ctx) {
+      const g = ctx.portfolioGain;
+      el.innerHTML = `<div class="w-center">
+        <div class="w-value money">${formatMoney(ctx.portfolioValue, 'EUR', 0)}</div>
+        <div class="fs-12 ${g >= 0 ? 'text-up' : 'text-down'}">${g >= 0 ? '+' : ''}${formatMoney(g, 'EUR', 0)} (${ctx.portfolioGainPct.toFixed(1)}%)</div>
+      </div>`;
+    },
+  },
+
+  'holdings': {
+    title: 'Holdings', section: 'solo', minW: 2, minH: 2,
+    render(el, ctx) {
+      el.innerHTML = ctx.holdings.length
+        ? `<div class="w-list">${ctx.holdings.map(h => `
+            <div class="flex-between" style="padding:5px 0;border-bottom:1px solid var(--border)">
+              <span class="fs-12 fw-600">${h.ticker}</span>
+              <span class="fs-12 money ${h.gain >= 0 ? 'text-up' : 'text-down'}">${formatMoney(h.value, h.currency || 'USD', 0)} · ${h.gainPct >= 0 ? '+' : ''}${h.gainPct.toFixed(1)}%</span>
+            </div>`).join('')}</div>`
+        : '<div class="empty">No holdings.</div>';
+    },
+  },
+
   // --- Multiple: need ≥2 profiles; use per-transaction profile_id ---
   'by-person-spending': {
     title: 'Spending by person · this month', section: 'multiple', minW: 2, minH: 2,
