@@ -15,9 +15,18 @@ import { openPageGallery } from './dashboards/page-gallery.js';
 import { t } from './i18n.js';
 import * as nav from './nav.js';
 
-// Service worker
+// Service worker. When an UPDATED worker takes control mid-session (new deploy), reload once
+// so the user gets the new version immediately instead of on their second visit. The
+// hadController guard keeps the very first install (no previous version) from reloading.
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('./sw.js');
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
 }
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
