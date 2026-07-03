@@ -163,7 +163,7 @@ function openPageSheet(page) {
     <div class="form-group"><label>${t('Icon')}</label>${iconPickerHTML(page.icon || 'ph-squares-four')}</div>
     <div class="flex gap-8" style="margin-top:8px">
       <button class="btn btn-primary" id="pg-save" style="flex:1">${t('Save')}</button>
-      ${pages.length > 1 ? `<button class="btn btn-danger" id="pg-del">${t('Delete')}</button>` : ''}
+      <button class="btn btn-danger" id="pg-del">${t('Delete')}</button>
     </div>`);
 
   const getIcon = bindIconPicker(el, page.icon || 'ph-squares-four');

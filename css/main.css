@@ -165,6 +165,14 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
 /* Empty state */
 .empty { text-align: center; color: var(--text-dim); padding: 32px 20px; font-size: 14px; }
 
+/* Dashboard zero-pages state — centered in the view */
+.dash-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; color: var(--text-dim); text-align: center; padding: 20px;
+}
+.dash-empty i { font-size: 44px; opacity: .5; margin-bottom: 6px; }
+.dash-empty-title { font-size: 16px; font-weight: 600; color: var(--text); }
+
 /* Toast */
 .toast {
   position: fixed;

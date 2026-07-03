@@ -9,7 +9,6 @@ import { resolveTheme } from '../dashboards/themes.js';
 import { WIDGETS } from '../dashboards/registry.js';
 import { openLibrary } from '../dashboards/library.js';
 import { openPersonalize, applyPageTheme, syncPersonalize } from '../dashboards/personalize.js';
-import { PREBUILT } from '../dashboards/prebuilt.js';
 import { esc } from '../format.js';
 import { t } from '../i18n.js';
 import * as nav from '../nav.js';
@@ -25,20 +24,9 @@ let resizeBound = false;
 window.invalidateDashboards = () => { ctx = null; };
 
 const uid = () => 'w' + Math.random().toString(36).slice(2, 8);
-const instantiate = (layout) => layout.map(it => ({ id: uid(), ...it }));
 
 export async function renderDashboards(container) {
   if (!ctx) ctx = await loadContext();
-
-  // Ensure at least one page exists (first-run seeds the Overview template).
-  if (!nav.getPages().length) {
-    const tpl = PREBUILT[0];
-    try {
-      const row = await nav.createPage({ name: t(tpl.name), theme: tpl.theme, icon: 'ph-chart-pie-slice', layout: instantiate(tpl.layout) });
-      nav.setCurrent(row.id);
-      window.refreshNav?.();
-    } catch (_) { /* offline — show empty state */ }
-  }
 
   editing = false;
   hostContainer = container;
@@ -57,7 +45,13 @@ function draw(container) {
   const page = nav.getPage(nav.getCurrentId());
   syncPersonalize(page?.id);   // page switched (no hash change) → unbind the style panel
   if (!page) {
-    container.innerHTML = `<div class="empty">${t('No dashboard yet. Use “+ Page” in the sidebar to create one.')}</div>`;
+    // All pages deleted — a deliberate state, not an error. Centered, calm.
+    container.innerHTML = `
+      <div class="dash-empty">
+        <i class="ph ph-ghost"></i>
+        <div class="dash-empty-title">${t('Nothing to see here')}</div>
+        <div class="fs-12">${t('Create a page with “+ Page” in the sidebar.')}</div>
+      </div>`;
     return;
   }
   const theme = resolveTheme(page.theme);

@@ -42,8 +42,8 @@ const DICT = {
     'Start from scratch': 'Começar do zero',
     '{n} widgets': '{n} widgets',
     'Could not add page': 'Não foi possível adicionar a página',
-    'No dashboard yet. Use “+ Page” in the sidebar to create one.':
-      'Ainda não há dashboards. Use “+ Página” na barra lateral para criar um.',
+    'Nothing to see here': 'Nada para ver aqui',
+    'Create a page with “+ Page” in the sidebar.': 'Crie uma página com “+ Página” na barra lateral.',
 
     // --- dashboard edit mode / engine ---
     'Edit': 'Editar',
