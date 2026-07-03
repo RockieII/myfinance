@@ -3,8 +3,9 @@
 
 /* Board: fixed-height cells (--cell-h set by the engine = host height / rows).
    The board is HARD-bounded — exactly `rows` rows, no scrolling; moves that would push
-   widgets past the bottom are denied (red ghost, snap back). */
-.grid-host { overflow: hidden; }
+   widgets past the bottom are denied (red ghost, snap back). Overflow stays visible so the
+   selection ring/handles of edge widgets can poke past the board into #view's padding. */
+.grid-host { overflow: visible; }
 .grid-canvas {
   position: relative;
   height: 100%;
@@ -67,12 +68,20 @@
   background: color-mix(in srgb, var(--down) 12%, transparent);
 }
 
-/* Tap-selected widget + phone-style edge resize handles */
-.grid-canvas.editing .widget.selected { overflow: visible; outline: 2px solid var(--accent); outline-offset: 2px; }
-.grid-canvas.editing .widget.selected .widget-body { overflow: hidden; }
+/* Tap-selected widget: a canvas-level ring carries the accent border + the 4 resize handles,
+   so the widget itself keeps its normal overflow clipping (no inner white band) and edge
+   widgets aren't clipped by the board. */
+.gh-ring {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  border-radius: calc(var(--pg-radius, 14px) + 2px);
+}
 .gh {
   position: absolute;
   z-index: 5;
+  pointer-events: auto;
   width: 14px;
   height: 14px;
   border-radius: 50%;

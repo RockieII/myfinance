@@ -71,7 +71,8 @@ const applyPos = (el, it) => {
 };
 
 export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
-  let selected = null; // currently selected widget element (shows resize handles)
+  let selected = null; // currently selected widget element
+  let ring = null;     // canvas-level selection ring carrying the resize handles
   const byId = (id) => items.find(x => x.id === id);
 
   const metrics = () => {
@@ -90,8 +91,8 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
     ghost.style.width = p.width + 'px'; ghost.style.height = p.height + 'px';
   };
 
-  // Tap on empty board space deselects.
-  canvas.addEventListener('pointerdown', (e) => { if (!e.target.closest('.widget')) deselect(); });
+  // Tap on empty board space deselects (the ring/handles live on the canvas, not the widget).
+  canvas.addEventListener('pointerdown', (e) => { if (!e.target.closest('.widget, .gh-ring')) deselect(); });
 
   canvas.querySelectorAll('.widget').forEach(el => {
     el.addEventListener('pointerdown', (e) => onWidgetDown(e, el));
@@ -252,6 +253,17 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
   }
 
   // ---- Tap to select + edge-handle resize ---------------------------------
+  // The ring (accent border + 4 handles) is a CANVAS child placed over the widget's rect:
+  // the widget keeps its own overflow clipping, and edge widgets' handles aren't cut off.
+  const placeRing = (g) => {
+    if (!ring) return;
+    const px = cellPx(metrics(), g);
+    ring.style.left = (px.left - 3) + 'px';
+    ring.style.top = (px.top - 3) + 'px';
+    ring.style.width = (px.width + 6) + 'px';
+    ring.style.height = (px.height + 6) + 'px';
+  };
+
   function select(el) {
     if (selected === el) return;
     deselect();
@@ -259,19 +271,23 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
     el.classList.add('selected');
     const item = byId(el.dataset.id);
     if (!item) return;
+    ring = document.createElement('div');
+    ring.className = 'gh-ring';
     for (const side of ['t', 'r', 'b', 'l']) {
       const h = document.createElement('div');
       h.className = `gh gh-${side}`;
       h.title = t('Drag to resize');
       h.addEventListener('pointerdown', (e) => startResize(e, h, el, item, side));
-      el.appendChild(h);
+      ring.appendChild(h);
     }
+    canvas.appendChild(ring);
+    placeRing(item);
   }
 
   function deselect() {
+    if (ring) { ring.remove(); ring = null; }
     if (!selected) return;
     selected.classList.remove('selected');
-    selected.querySelectorAll('.gh').forEach(h => h.remove());
     selected = null;
   }
 
@@ -286,7 +302,7 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
     const ghost = document.createElement('div');
     ghost.className = 'drop-ghost';
     canvas.appendChild(ghost);
-    const paint = () => { applyPos(el, geo); placeGhost(ghost, geo); };
+    const paint = () => { applyPos(el, geo); placeGhost(ghost, geo); placeRing(geo); };
     paint();
     handle.setPointerCapture(e.pointerId);
 
@@ -317,12 +333,12 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
       const changed = geo.x !== item.x || geo.y !== item.y || geo.w !== item.w || geo.h !== item.h;
       if (!changed) return;
       const res = pushDown(items.map(it => it.id === item.id ? { ...it, ...geo } : { ...it }), item.id, rows);
-      if (!res.ok) { applyPos(el, item); return; }   // push would cross the bottom — revert
+      if (!res.ok) { applyPos(el, item); placeRing(item); return; }   // push would cross the bottom — revert
       onChange(res.items);
     };
-    const onCancel = () => { unbind(); applyPos(el, item); };
+    const onCancel = () => { unbind(); applyPos(el, item); placeRing(item); };
     // Escape cancels a resize the same way it cancels a drag.
-    const doCancel = () => { cancelled = true; unbind(); applyPos(el, item); };
+    const doCancel = () => { cancelled = true; unbind(); applyPos(el, item); placeRing(item); };
     const onKey = (kev) => { if (kev.key === 'Escape') doCancel(); };
     window.addEventListener('keydown', onKey);
     active = doCancel;
