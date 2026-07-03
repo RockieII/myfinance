@@ -11,11 +11,8 @@ import { WIDGETS } from './registry.js';
 import { t } from '../i18n.js';
 
 const THRESHOLD = 6;   // px of movement before a press becomes a drag
-const HOLD_MS = 280;   // touch: hold time before a press arms a drag (a plain swipe scrolls)
 const DWELL_MS = 500;  // hover time over an occupied spot before the push preview
 const FLIP_MS = 180;
-const EDGE_PX = 36;    // distance from the board edge that triggers auto-scroll while dragging
-const EDGE_STEP = 14;  // auto-scroll px per tick
 
 // The in-flight drag/resize (its cancel fn). renderGrid cancels it before replacing the
 // canvas — a re-render mid-gesture would otherwise orphan the fixed clone / ghost on screen.
@@ -32,19 +29,23 @@ const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h 
 // Push-down resolve: the `fixedId` item stays put; every widget intersecting it (or one
 // already pushed) moves down to the first y where it clears (at minimum below the blocker).
 // Processed in (y,x) order; y only ever grows → deterministic, always terminates.
-export function pushDown(items, fixedId) {
+// The board has a HARD bottom: if any pushed widget would cross `rows`, ok=false — the
+// caller must refuse the move (denied ghost / snap back) instead of overflowing the board.
+export function pushDown(items, fixedId, rows) {
   const out = items.map(it => ({ ...it }));
   const fixed = out.find(it => it.id === fixedId);
   const placed = fixed ? [fixed] : [];
   const rest = out.filter(it => it !== fixed).sort((a, b) => a.y - b.y || a.x - b.x);
+  let ok = true;
   for (const it of rest) {
     for (let hit = true; hit;) {
       hit = false;
       for (const p of placed) if (overlap(it, p)) { it.y = p.y + p.h; hit = true; }
     }
+    if (it.y + it.h > rows) ok = false;
     placed.push(it);
   }
-  return out;
+  return { items: out, ok };
 }
 
 // FLIP: record rects, mutate layout, invert with transforms, transition to identity.
@@ -103,37 +104,23 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
     if (!item) return;
     e.preventDefault();
     const sx = e.clientX, sy = e.clientY;
-    const host = canvas.parentElement;
     let drag = null;
-    let scrolling = false;   // this touch gesture is a board scroll, not a drag
-    let lastY = sy;
-    // Touch needs a short hold before a press arms a drag — widgets have touch-action:none in
-    // edit mode, so a plain swipe can't scroll natively; we pan the host manually instead.
-    let holdReady = e.pointerType === 'mouse';
-    const holdTimer = holdReady ? null : setTimeout(() => { holdReady = !scrolling; }, HOLD_MS);
     el.setPointerCapture(e.pointerId);
 
     const onMove = (ev) => {
-      if (drag) { drag.move(ev); return; }
-      if (!holdReady) {
-        if (!scrolling && Math.hypot(ev.clientX - sx, ev.clientY - sy) < THRESHOLD) return;
-        scrolling = true;
-        host.scrollTop -= ev.clientY - lastY;
-        lastY = ev.clientY;
-        return;
+      if (!drag) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < THRESHOLD) return;
+        drag = startDrag(el, item, sx, sy);
       }
-      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < THRESHOLD) return;
-      drag = startDrag(el, item, sx, sy);
       drag.move(ev);
     };
     const unbind = () => {
-      if (holdTimer) clearTimeout(holdTimer);
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointercancel', onCancel);
       try { el.releasePointerCapture(e.pointerId); } catch (_) {}
     };
-    const onUp = (ev) => { unbind(); if (drag) drag.drop(ev); else if (!scrolling) select(el); };
+    const onUp = (ev) => { unbind(); if (drag) drag.drop(ev); else select(el); };
     const onCancel = () => { unbind(); if (drag) drag.cancel(); };
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
@@ -143,10 +130,8 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
   // ---- Drag to move -------------------------------------------------------
   function startDrag(el, item, grabX, grabY) {
     deselect();
-    const host = canvas.parentElement;
     const others = items.filter(x => x.id !== item.id);
-    const maxBottom = others.reduce((mx, o) => Math.max(mx, o.y + o.h), 0);
-    const yCap = Math.max(rows - item.h, maxBottom); // can drop below everything (board scrolls)
+    const yCap = Math.max(0, rows - item.h);   // hard board bottom — no scrolling
     const dwellOn = localStorage.getItem('mf.dragReflow') !== '0';
     const srcRect = el.getBoundingClientRect();
     const otherEls = [...canvas.querySelectorAll('.widget')].filter(w => w !== el);
@@ -174,18 +159,9 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
 
     let proj = { x: item.x, y: item.y, w: item.w, h: item.h };
     let dwellTimer = null, previewOn = false, inside = true, done = false;
-    let lastEv = null, commitTimer = null, myCancel = null;
+    let feasible = true;   // the current projection can resolve without crossing the bottom
+    let commitTimer = null, myCancel = null;
     placeGhost(ghost, proj);
-
-    // Auto-scroll the host while the pointer hovers near its top/bottom edge, then re-project.
-    const scrollTimer = setInterval(() => {
-      if (done || !lastEv) return;
-      const hr = host.getBoundingClientRect();
-      if (lastEv.clientY < hr.top + EDGE_PX && host.scrollTop > 0) host.scrollTop -= EDGE_STEP;
-      else if (lastEv.clientY > hr.bottom - EDGE_PX) host.scrollTop += EDGE_STEP;
-      else return;
-      move(lastEv);
-    }, 50);
 
     const setPreview = (posById) => flip(otherEls, () =>
       otherEls.forEach(wEl => { const p = posById.get(wEl.dataset.id); if (p) applyPos(wEl, p); }));
@@ -193,23 +169,24 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
     const restorePreview = () => { if (previewOn) { setPreview(origPos); previewOn = false; } };
     const cleanup = () => {
       clearDwell();
-      clearInterval(scrollTimer);
       clone.remove(); ghost.remove(); el.classList.remove('drag-src');
       window.removeEventListener('keydown', onKey);
       if (active === myCancel) active = null;
     };
+    // Snap the clone back to its origin cell, then tear down (deny / cancel feel).
+    const snapBack = () => {
+      restorePreview();
+      clone.style.transition = 'transform 140ms ease';
+      clone.style.transform = 'translate(0,0) scale(1)';
+      commitTimer = setTimeout(() => { commitTimer = null; cleanup(); }, 150);
+    };
 
     function move(ev) {
       if (done) return;
-      lastEv = ev;
       const m = metrics();
       const dx = ev.clientX - grabX, dy = ev.clientY - grabY;
       clone.style.transform = `translate(${dx}px,${dy}px) scale(.97)`;
-      // Inside = over the board's VISIBLE area (the canvas can extend above/below the host
-      // when scrolled — dropping over the clipped part must cancel, not commit).
-      const hr = host.getBoundingClientRect();
-      inside = ev.clientX >= m.r.left && ev.clientX <= m.r.right
-        && ev.clientY >= Math.max(m.r.top, hr.top) && ev.clientY <= Math.min(m.r.bottom, hr.bottom);
+      inside = ev.clientX >= m.r.left && ev.clientX <= m.r.right && ev.clientY >= m.r.top && ev.clientY <= m.r.bottom;
       // Project the dragged rect's top-left onto the board, clamped to it.
       const nx = clamp(Math.round((srcRect.left + dx - m.r.left) / (m.cellW + m.gap)), 0, cols - item.w);
       const ny = clamp(Math.round((srcRect.top + dy - m.r.top) / (m.cellH + m.gap)), 0, yCap);
@@ -217,9 +194,14 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
         proj = { ...proj, x: nx, y: ny };
         clearDwell();
         restorePreview();
-        if (dwellOn && others.some(o => overlap(proj, o))) {
+        // A spot is feasible when it's free, or the push-down resolve stays inside the board.
+        const overlapping = others.some(o => overlap(proj, o));
+        feasible = !overlapping
+          || pushDown([{ id: '__drag', ...proj }, ...others], '__drag', rows).ok;
+        ghost.classList.toggle('denied', !feasible);
+        if (dwellOn && overlapping && feasible) {
           dwellTimer = setTimeout(() => { // dwelled on an occupied spot → preview the push
-            const pushed = pushDown([{ id: '__drag', ...proj }, ...others], '__drag');
+            const pushed = pushDown([{ id: '__drag', ...proj }, ...others], '__drag', rows).items;
             setPreview(new Map(pushed.filter(p => p.id !== '__drag').map(p => [p.id, p])));
             previewOn = true;
           }, DWELL_MS);
@@ -233,11 +215,13 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
       if (done) return;
       done = true;
       clearDwell();
-      if (!inside) { restorePreview(); cleanup(); return; } // outside the board = cancel
+      if (!inside) { restorePreview(); cleanup(); return; }   // outside the board = cancel
+      if (!feasible) { snapBack(); return; }                  // would cross the bottom = deny
       const changed = proj.x !== item.x || proj.y !== item.y;
-      const next = pushDown(items.map(it => it.id === item.id ? { ...it, x: proj.x, y: proj.y } : { ...it }), item.id);
+      const res = pushDown(items.map(it => it.id === item.id ? { ...it, x: proj.x, y: proj.y } : { ...it }), item.id, rows);
+      if (!res.ok) { snapBack(); return; }
       // Commit feel: FLIP the pushed widgets, glide the clone into the target cell, then save.
-      setPreview(new Map(next.filter(p => p.id !== item.id).map(p => [p.id, p])));
+      setPreview(new Map(res.items.filter(p => p.id !== item.id).map(p => [p.id, p])));
       const target = cellPx(metrics(), proj);
       const m = metrics();
       clone.style.transition = 'transform 140ms ease';
@@ -245,7 +229,7 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
       commitTimer = setTimeout(() => {
         commitTimer = null;
         cleanup();
-        if (changed) onChange(next);
+        if (changed) onChange(res.items);
       }, 160);
     }
 
@@ -312,7 +296,7 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
       const dr = Math.round((ev.clientY - sy) / (m.cellH + m.gap));
       const g = { x: item.x, y: item.y, w: item.w, h: item.h };
       if (side === 'r') g.w = clamp(item.w + dc, minW, cols - item.x);
-      if (side === 'b') g.h = Math.max(minH, item.h + dr);
+      if (side === 'b') g.h = clamp(item.h + dr, minH, rows - item.y);   // hard board bottom
       if (side === 'l') { g.x = clamp(item.x + dc, 0, item.x + item.w - minW); g.w = item.x + item.w - g.x; }
       if (side === 't') { g.y = clamp(item.y + dr, 0, item.y + item.h - minH); g.h = item.y + item.h - g.y; }
       if (g.x !== geo.x || g.y !== geo.y || g.w !== geo.w || g.h !== geo.h) { geo = g; paint(); }
@@ -332,7 +316,9 @@ export function attachGridDnd(canvas, items, { cols, rows, onChange }) {
       if (cancelled) return;
       const changed = geo.x !== item.x || geo.y !== item.y || geo.w !== item.w || geo.h !== item.h;
       if (!changed) return;
-      onChange(pushDown(items.map(it => it.id === item.id ? { ...it, ...geo } : { ...it }), item.id));
+      const res = pushDown(items.map(it => it.id === item.id ? { ...it, ...geo } : { ...it }), item.id, rows);
+      if (!res.ok) { applyPos(el, item); return; }   // push would cross the bottom — revert
+      onChange(res.items);
     };
     const onCancel = () => { unbind(); applyPos(el, item); };
     // Escape cancels a resize the same way it cancels a drag.

@@ -3,7 +3,7 @@
 // widgets (engine + grid-dnd), add from the widget library, style the page (personalize panel).
 // Page CRUD sheets live with the sidebar (js/nav.js); page creation goes through the page gallery.
 
-import { renderGrid, getCols } from '../dashboards/engine.js';
+import { renderGrid, getCols, findSpot } from '../dashboards/engine.js';
 import { loadContext } from '../dashboards/context.js';
 import { resolveTheme } from '../dashboards/themes.js';
 import { WIDGETS } from '../dashboards/registry.js';
@@ -109,6 +109,11 @@ async function addWidget(container, type) {
   const w = WIDGETS[type];
   if (!w) return;
   const page = nav.getPage(nav.getCurrentId());
+  // The board has a hard bottom — refuse instead of overflowing when the page is full.
+  if (!findSpot(page.layout, w.minW, w.minH)) {
+    showToast(t('No space left on this page — resize or remove a widget first.'));
+    return;
+  }
   const layout = [...page.layout, { id: uid(), type, w: w.minW, h: w.minH }];
   page.layout = layout;
   draw(container);

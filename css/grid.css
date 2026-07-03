@@ -1,18 +1,37 @@
 /* MyFinance — free grid: board, drag & drop, resize handles.
    Loaded after main.css; may override .grid-canvas/.widget rules from there. */
 
-/* Board: fixed-height cells (--cell-h set by the engine = host height / visible rows).
-   Content taller than the board is allowed — the host scrolls, the canvas grows. */
-.grid-host { overflow-y: auto; overflow-x: hidden; }
+/* Board: fixed-height cells (--cell-h set by the engine = host height / rows).
+   The board is HARD-bounded — exactly `rows` rows, no scrolling; moves that would push
+   widgets past the bottom are denied (red ghost, snap back). */
+.grid-host { overflow: hidden; }
 .grid-canvas {
   position: relative;
-  height: auto;
-  min-height: 100%;
+  height: 100%;
   grid-auto-rows: var(--cell-h, 90px);
   gap: var(--pg-gap, 10px);
   align-content: start;
 }
 .widget { position: relative; }
+
+/* Widgets are size containers: card typography scales down with the cell so short cells
+   never clip their content (value + subline must always fit). */
+.grid-canvas .widget { padding: 10px; container-type: size; }
+.grid-canvas .widget-head { margin-bottom: 4px; }
+.grid-canvas .w-value { line-height: 1.15; }
+.grid-canvas .w-center { min-height: 0; overflow: hidden; }
+@container (max-height: 150px) {
+  .widget-body .w-value { font-size: 20px; }
+  .w-center .w-value { font-size: 22px; }
+  .w-num { font-size: 14px; }
+  .w-stats { gap: 2px 10px; }
+}
+@container (max-height: 108px) {
+  .widget-body .w-value { font-size: 17px; }
+  .w-center .w-value { font-size: 18px; }
+  .w-num { font-size: 13px; }
+  .widget-body .fs-12 { font-size: 11px; }
+}
 
 /* Edit mode: widgets are draggable (touch-action none so touch drags reach us) */
 .grid-canvas.editing .widget { touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
@@ -41,6 +60,11 @@
   border: 2px dashed var(--accent);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+/* Spot can't resolve without crossing the board bottom — the drop will snap back */
+.drop-ghost.denied {
+  border-color: var(--down);
+  background: color-mix(in srgb, var(--down) 12%, transparent);
 }
 
 /* Tap-selected widget + phone-style edge resize handles */

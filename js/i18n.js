@@ -18,6 +18,8 @@ const DICT = {
     'Collapse / expand menu': 'Recolher / expandir menu',
     'Add / manage data': 'Adicionar / gerir dados',
     'Default categories': 'Categorias predefinidas',
+    'No space left on this page — resize or remove a widget first.':
+      'Sem espaço nesta página — redimensione ou remova um widget primeiro.',
     'Categories': 'Categorias',
     'Help & FAQ': 'Ajuda e FAQ',
     'Unknown view.': 'Vista desconhecida.',

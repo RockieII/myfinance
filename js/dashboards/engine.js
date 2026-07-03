@@ -32,23 +32,29 @@ function mark(occ, x, y, w, h) {
   for (let i = x; i < x + w; i++) for (let j = y; j < y + h; j++) occ.add(key(i, j));
 }
 
-// First free rect at or after the cursor, scanning row-major (never backtracks — matches
-// the sparse CSS auto-placement the legacy span-only layouts were built against).
-function firstFit(occ, cur, w, h, cols) {
-  for (let y = cur.y; ; y++) {
+// First free rect at or after the cursor, scanning row-major (matches the sparse CSS
+// auto-placement the legacy span-only layouts were built against). The board is HARD-bounded
+// at `rows` (no scrolling): if the forward scan fails, retry densely from the origin; if the
+// board is truly full, fall back to the bottom-right corner (overlap — rare, legacy overfull).
+function firstFit(occ, cur, w, h, cols, rows) {
+  for (let y = cur.y; y <= rows - h; y++) {
     for (let x = (y === cur.y ? cur.x : 0); x <= cols - w; x++) {
       if (fits(occ, x, y, w, h)) return { x, y };
     }
   }
+  for (let y = 0; y <= rows - h; y++) {
+    for (let x = 0; x <= cols - w; x++) if (fits(occ, x, y, w, h)) return { x, y };
+  }
+  return { x: Math.max(0, cols - w), y: Math.max(0, rows - h) };
 }
 
 // Normalize a stored layout for `cols` columns: per-item bp[cols] override wins over the base
 // geometry; sizes clamp to registry minimums and the board width; legacy items without coords
 // are placed first-fit (array order, forward cursor). If any effective rect was made on a
 // wider board (x+w > cols), reflow everything for display instead.
-export function normalizeLayout(layout, cols) { return normalize(layout, cols).items; }
+export function normalizeLayout(layout, cols, rows = getRows()) { return normalize(layout, cols, rows).items; }
 
-function normalize(layout, cols) {
+function normalize(layout, cols, rows) {
   const out = [];
   const occ = new Set();
   let cur = { x: 0, y: 0 };
@@ -57,35 +63,46 @@ function normalize(layout, cols) {
     const def = WIDGETS[raw.type] || { minW: 1, minH: 1 };
     const eff = raw.bp?.[cols] ?? raw;
     const w = Math.min(Math.max(eff.w || def.minW, def.minW), cols);
-    const h = Math.max(eff.h || def.minH, def.minH);
+    const h = Math.min(Math.max(eff.h || def.minH, def.minH), rows);
     let x = eff.x, y = eff.y;
     if (Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0) {
-      if (x + (eff.w || w) > cols) overflowed = true; // stored for a wider board
+      if (x + (eff.w || w) > cols || y + h > rows) overflowed = true; // stored for a bigger board
       x = Math.min(x, cols - w);
+      y = Math.min(y, rows - h);
     } else {
-      ({ x, y } = firstFit(occ, cur, w, h, cols));
+      ({ x, y } = firstFit(occ, cur, w, h, cols, rows));
       cur = { x, y };
     }
     mark(occ, x, y, w, h);
     out.push({ id: raw.id, type: raw.type, x, y, w, h });
   }
-  return { items: overflowed ? reflowToCols(out, cols) : out, overflowed };
+  return { items: overflowed ? reflowToBoard(out, cols, rows) : out, overflowed };
 }
 
-// Deterministic display-only reflow into a narrower board: (y,x) order, first-fit from origin.
-function reflowToCols(items, cols) {
+// Deterministic display-only reflow into a smaller board: (y,x) order, first-fit from origin.
+function reflowToBoard(items, cols, rows) {
   const sorted = items.map((it, i) => [it, i])
     .sort((a, b) => a[0].y - b[0].y || a[0].x - b[0].x || a[1] - b[1]).map(p => p[0]);
   const occ = new Set();
   return sorted.map(it => {
     const w = Math.min(it.w, cols);
-    let pos = null;
-    for (let y = 0; !pos; y++) {
-      for (let x = 0; x <= cols - w; x++) if (fits(occ, x, y, w, it.h)) { pos = { x, y }; break; }
-    }
-    mark(occ, pos.x, pos.y, w, it.h);
-    return { ...it, x: pos.x, y: pos.y, w };
+    const h = Math.min(it.h, rows);
+    const pos = firstFit(occ, { x: 0, y: 0 }, w, h, cols, rows);
+    mark(occ, pos.x, pos.y, w, h);
+    return { ...it, x: pos.x, y: pos.y, w, h };
   });
+}
+
+// First free spot for a w×h widget on the CURRENT board, or null when the page is full.
+// Used by "+ Widget" so adding to a full page refuses instead of overflowing the board.
+export function findSpot(layout, w, h) {
+  const cols = getCols(), rows = getRows();
+  const occ = new Set();
+  normalize(layout, cols, rows).items.forEach(it => mark(occ, it.x, it.y, it.w, it.h));
+  for (let y = 0; y <= rows - h; y++) {
+    for (let x = 0; x <= cols - w; x++) if (fits(occ, x, y, w, h)) return { x, y };
+  }
+  return null;
 }
 
 let charts = [];
@@ -102,7 +119,7 @@ export function renderGrid(container, layout, ctx, opts = {}) {
 
   const cols = getCols();
   const rows = getRows();
-  const { items, overflowed } = normalize(layout, cols);
+  const { items, overflowed } = normalize(layout, cols, rows);
 
   container.innerHTML = `
     <div class="grid-canvas ${editing ? 'editing' : ''}" style="--cols:${cols}">
