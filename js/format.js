@@ -1,17 +1,26 @@
 // MyFinance — shared number / money formatting
-// One source of truth so every view formats money the same way.
+// One source of truth so every view formats money the same way. Formatting follows the
+// display language (locale() from i18n.js), so pt shows "1 234,50 €" where en shows "€1,234.50".
+
+import { locale } from './i18n.js';
 
 const cache = {};
 
 function formatter(currency, decimals) {
-  const key = `${currency}:${decimals}`;
-  return (cache[key] ||= new Intl.NumberFormat('en', {
+  const loc = locale();
+  const key = `${loc}:${currency}:${decimals}`;
+  return (cache[key] ||= new Intl.NumberFormat(loc, {
     style: 'currency',
     currency,
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }));
 }
+
+// HTML-escape user-sourced strings before interpolating them into innerHTML / attributes
+// (descriptions, names, tickers... anything typed by the user and stored in the DB).
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+export function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ESC[c]); }
 
 // formatMoney(1234.5)            -> "€1,234.50"
 // formatMoney(1234.5, 'USD')    -> "$1,234.50"
@@ -20,8 +29,14 @@ export function formatMoney(amount, currency = 'EUR', decimals = 2) {
   return formatter(currency, decimals).format(Number(amount) || 0);
 }
 
-// Signed percentage: formatPct(2.4) -> "+2.4%"
+// Signed percentage: formatPct(2.4) -> "+2.4%" (pt: "+2,4%")
 export function formatPct(value, digits = 1) {
-  const n = Number(value) || 0;
-  return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`;
+  const loc = locale();
+  const key = `pct:${loc}:${digits}`;
+  const f = (cache[key] ||= new Intl.NumberFormat(loc, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    signDisplay: 'always',
+  }));
+  return f.format(Number(value) || 0) + '%';
 }

@@ -2,6 +2,7 @@
 // Manage income and expense categories (pre-built + custom).
 
 import * as DB from '../db.js';
+import { t } from '../i18n.js';
 
 const ICONS = [
   'ph-house', 'ph-fork-knife', 'ph-car', 'ph-film-strip', 'ph-heart',
@@ -35,32 +36,32 @@ function draw(container) {
   const defaults = filtered.filter(c => c.is_default);
 
   container.innerHTML = `
-    <button class="btn btn-outline btn-sm mb-12" id="cat-back">‹ Settings</button>
+    <button class="btn btn-outline btn-sm mb-12" id="cat-back">‹ ${t('Settings')}</button>
     <div class="flex-between mb-12">
       <div class="tab-toggle">
-        <button class="toggle-btn ${filterType === 'expense' ? 'active' : ''}" data-type="expense">Expenses</button>
-        <button class="toggle-btn ${filterType === 'income' ? 'active' : ''}" data-type="income">Income</button>
+        <button class="toggle-btn ${filterType === 'expense' ? 'active' : ''}" data-type="expense">${t('Expenses')}</button>
+        <button class="toggle-btn ${filterType === 'income' ? 'active' : ''}" data-type="income">${t('Income')}</button>
       </div>
-      <button class="btn btn-primary btn-sm" id="add-cat-btn">+ Add</button>
+      <button class="btn btn-primary btn-sm" id="add-cat-btn">${t('+ Add')}</button>
     </div>
 
     <div id="cat-form-area"></div>
 
     ${defaults.length ? `
-      <h3 class="section-title">Default</h3>
+      <h3 class="section-title">${t('Default categories')}</h3>
       <div class="card">
         ${defaults.map(c => catRow(c, false)).join('')}
       </div>
     ` : ''}
 
     ${customs.length ? `
-      <h3 class="section-title">Custom</h3>
+      <h3 class="section-title">${t('Custom')}</h3>
       <div class="card">
         ${customs.map(c => catRow(c, true)).join('')}
       </div>
     ` : ''}
 
-    ${!defaults.length && !customs.length ? '<div class="empty">No categories yet.</div>' : ''}
+    ${!defaults.length && !customs.length ? `<div class="empty">${t('No categories yet.')}</div>` : ''}
   `;
 
   // Back to Settings
@@ -93,13 +94,13 @@ function draw(container) {
 
   container.querySelectorAll('[data-delete]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Delete this category? Transactions using it will need reassignment.')) return;
+      if (!confirm(t('Delete this category? Transactions using it will need reassignment.'))) return;
       try {
         await DB.remove('categories', btn.dataset.delete);
-        showToast('Category deleted');
+        showToast(t('Category deleted'));
         await renderCategories(container);
       } catch (err) {
-        showToast('Cannot delete: ' + err.message);
+        showToast(t('Cannot delete: {msg}', { msg: err.message }));
       }
     });
   });
@@ -111,8 +112,8 @@ function catRow(cat, editable) {
       <i class="ph ${cat.icon}" style="font-size:20px;color:${cat.color || 'var(--accent)'};width:24px;text-align:center"></i>
       <span style="flex:1">${cat.name}</span>
       ${editable ? `
-        <button data-edit="${cat.id}" class="btn-icon" title="Edit"><i class="ph ph-pencil-simple"></i></button>
-        <button data-delete="${cat.id}" class="btn-icon" title="Delete"><i class="ph ph-trash"></i></button>
+        <button data-edit="${cat.id}" class="btn-icon" title="${t('Edit')}"><i class="ph ph-pencil-simple"></i></button>
+        <button data-delete="${cat.id}" class="btn-icon" title="${t('Delete')}"><i class="ph ph-trash"></i></button>
       ` : ''}
     </div>
   `;
@@ -122,21 +123,21 @@ function showForm(container, cat) {
   const area = container.querySelector('#cat-form-area');
   area.innerHTML = `
     <div class="card mb-12">
-      <h3 style="margin:0 0 12px;font-size:15px">${editingId ? 'Edit' : 'New'} Category</h3>
+      <h3 style="margin:0 0 12px;font-size:15px">${editingId ? t('Edit Category') : t('New Category')}</h3>
       <form id="cat-form">
         <div class="form-group">
-          <label>Name</label>
+          <label>${t('Name')}</label>
           <input id="cat-name" class="form-control" value="${cat.name}" required>
         </div>
         <div class="form-group">
-          <label>Type</label>
+          <label>${t('Type')}</label>
           <select id="cat-type" class="form-control">
-            <option value="expense" ${cat.type === 'expense' ? 'selected' : ''}>Expense</option>
-            <option value="income" ${cat.type === 'income' ? 'selected' : ''}>Income</option>
+            <option value="expense" ${cat.type === 'expense' ? 'selected' : ''}>${t('Expense')}</option>
+            <option value="income" ${cat.type === 'income' ? 'selected' : ''}>${t('Income')}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Icon</label>
+          <label>${t('Icon')}</label>
           <div class="icon-grid" id="icon-grid">
             ${ICONS.map(ic => `
               <button type="button" class="icon-pick ${ic === cat.icon ? 'active' : ''}" data-icon="${ic}">
@@ -146,7 +147,7 @@ function showForm(container, cat) {
           </div>
         </div>
         <div class="form-group">
-          <label>Colour</label>
+          <label>${t('Colour')}</label>
           <div class="icon-grid" id="color-grid">
             ${COLORS.map(col => `
               <button type="button" class="color-pick ${col === (cat.color || DEFAULT_COLOR) ? 'active' : ''}" data-color="${col}" style="background:${col}"></button>
@@ -154,8 +155,8 @@ function showForm(container, cat) {
           </div>
         </div>
         <div class="flex gap-8">
-          <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Create'}</button>
-          <button type="button" class="btn btn-outline" id="cat-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">${editingId ? t('Save') : t('Create')}</button>
+          <button type="button" class="btn btn-outline" id="cat-cancel">${t('Cancel')}</button>
         </div>
       </form>
     </div>
@@ -196,14 +197,14 @@ function showForm(container, cat) {
     try {
       if (editingId) {
         await DB.update('categories', editingId, data);
-        showToast('Category updated');
+        showToast(t('Category updated'));
       } else {
         await DB.create('categories', data);
-        showToast('Category created');
+        showToast(t('Category created'));
       }
       await renderCategories(container);
     } catch (err) {
-      showToast('Error: ' + err.message);
+      showToast(t('Error: {msg}', { msg: err.message }));
     }
   });
 }

@@ -1,116 +1,70 @@
 // MyFinance — Settings View
-// Manage bank accounts, export data, sign out.
+// Profiles, categories, data export, help, language, session, developer tools.
+// (Bank accounts moved to the Data page's Accounts tab — see views/accounts.js.)
 
 import * as DB from '../db.js';
 import { signOut } from '../auth.js';
 import { DEV_TOOLS } from '../config.js';
 import { generateTestData, wipeTestData } from '../seed-data.js';
-import { formatMoney } from '../format.js';
+import { t, getLang, setLang, LANGS } from '../i18n.js';
 
-let accounts = [];
 let profiles = [];
-let editingId = null;
 let editingProfileId = null;
-
-const ACCOUNT_TYPES = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'investment', label: 'Investment' },
-];
 
 const PROFILE_COLORS = ['#1E7F5C', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#EF4444', '#14B8A6', '#6B7280'];
 
 export async function renderSettings(container) {
-  [accounts, profiles] = await Promise.all([
-    DB.getAll('accounts', { order: 'name', ascending: true }),
-    DB.getAll('profiles', { order: 'name', ascending: true }),
-  ]);
-  editingId = null;
+  profiles = await DB.getAll('profiles', { order: 'name', ascending: true });
   editingProfileId = null;
   draw(container);
 }
 
 function draw(container) {
   container.innerHTML = `
-    <h3 class="section-title">Accounts</h3>
-    <div id="account-form-area"></div>
-
-    ${accounts.length ? `
-      <div class="card">
-        ${accounts.map(a => accountRow(a)).join('')}
-      </div>
-    ` : '<div class="empty">No accounts yet. Add your first account.</div>'}
-
-    <button class="btn btn-primary mt-12" id="add-account-btn">+ Add Account</button>
-
-    <h3 class="section-title" style="margin-top:32px">Profiles <span class="text-dim" style="text-transform:none;letter-spacing:0">· share this account</span></h3>
+    <h3 class="section-title">${t('Profiles')} <span class="text-dim" style="text-transform:none;letter-spacing:0">· ${t('share this account')}</span></h3>
     <div id="profile-form-area"></div>
     ${profiles.length
       ? `<div class="card">${profiles.map(profileRow).join('')}</div>`
-      : '<div class="empty" style="padding:16px">No profiles yet. Add one per person (e.g. for a couple) to track who spent what — everything stays in this one account.</div>'}
-    <button class="btn btn-primary mt-12" id="add-profile-btn">+ Add Profile</button>
+      : `<div class="empty" style="padding:16px">${t('No profiles yet. Add one per person (e.g. for a couple) to track who spent what — everything stays in this one account.')}</div>`}
+    <button class="btn btn-primary mt-12" id="add-profile-btn">${t('+ Add Profile')}</button>
 
-    <h3 class="section-title" style="margin-top:32px">Categories</h3>
+    <h3 class="section-title" style="margin-top:32px">${t('Categories')}</h3>
     <div class="card">
-      <button class="btn btn-outline" id="cats-btn" style="width:100%">Manage categories ▸</button>
+      <button class="btn btn-outline" id="cats-btn" style="width:100%">${t('Manage categories')} ▸</button>
     </div>
 
-    <h3 class="section-title" style="margin-top:32px">Data</h3>
+    <h3 class="section-title" style="margin-top:32px">${t('Data')}</h3>
     <div class="card">
-      <button class="btn btn-outline" id="export-btn" style="width:100%">Export Transactions (CSV)</button>
+      <button class="btn btn-outline" id="export-btn" style="width:100%">${t('Export Transactions (CSV)')}</button>
     </div>
 
-    <h3 class="section-title" style="margin-top:32px">Help</h3>
+    <h3 class="section-title" style="margin-top:32px">${t('Language')}</h3>
     <div class="card">
-      <button class="btn btn-outline" id="help-btn" style="width:100%">Help &amp; FAQ ▸</button>
+      <div class="tab-toggle">
+        ${Object.entries(LANGS).map(([code, label]) =>
+          `<button class="toggle-btn ${getLang() === code ? 'active' : ''}" data-lang="${code}">${label}</button>`).join('')}
+      </div>
     </div>
 
-    <h3 class="section-title" style="margin-top:32px">Session</h3>
+    <h3 class="section-title" style="margin-top:32px">${t('Help')}</h3>
     <div class="card">
-      <button class="btn btn-danger" id="signout-btn" style="width:100%">Sign Out</button>
+      <button class="btn btn-outline" id="help-btn" style="width:100%">${t('Help & FAQ')} ▸</button>
+    </div>
+
+    <h3 class="section-title" style="margin-top:32px">${t('Session')}</h3>
+    <div class="card">
+      <button class="btn btn-danger" id="signout-btn" style="width:100%">${t('Sign Out')}</button>
     </div>
 
     ${DEV_TOOLS ? `
-      <h3 class="section-title" style="margin-top:32px">Developer</h3>
+      <h3 class="section-title" style="margin-top:32px">${t('Developer')}</h3>
       <div class="card">
-        <div class="fs-12 text-dim mb-12">Fills your account with <strong>[TEST]</strong>-tagged dummy data
-          (3 accounts, 24 months, sample stocks). Wipe removes only tagged data — real records are never touched.</div>
-        <button class="btn btn-outline" id="gen-data-btn" style="width:100%">Generate test data</button>
-        <button class="btn btn-danger" id="wipe-data-btn" style="width:100%;margin-top:8px">Wipe test data</button>
+        <div class="fs-12 text-dim mb-12">${t('Fills your account with <strong>[TEST]</strong>-tagged dummy data (3 accounts, 24 months, sample stocks). Wipe removes only tagged data — real records are never touched.')}</div>
+        <button class="btn btn-outline" id="gen-data-btn" style="width:100%">${t('Generate test data')}</button>
+        <button class="btn btn-danger" id="wipe-data-btn" style="width:100%;margin-top:8px">${t('Wipe test data')}</button>
       </div>
     ` : ''}
   `;
-
-  // Add account
-  container.querySelector('#add-account-btn').addEventListener('click', () => {
-    editingId = null;
-    showForm(container, { name: '', type: 'checking', currency: 'EUR', initial_balance: 0 });
-  });
-
-  // Edit/delete
-  container.querySelectorAll('[data-edit-acc]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const acc = accounts.find(a => a.id === btn.dataset.editAcc);
-      if (acc) {
-        editingId = acc.id;
-        showForm(container, acc);
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-delete-acc]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Delete this account? All its transactions will also be deleted.')) return;
-      try {
-        await DB.remove('accounts', btn.dataset.deleteAcc);
-        showToast('Account deleted');
-        await renderSettings(container);
-      } catch (err) {
-        showToast('Cannot delete: ' + err.message);
-      }
-    });
-  });
 
   // Profiles: add / edit / delete
   container.querySelector('#add-profile-btn').addEventListener('click', () => {
@@ -125,13 +79,22 @@ function draw(container) {
   });
   container.querySelectorAll('[data-delete-profile]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Delete this profile? Its transactions stay, but become unassigned (shared).')) return;
+      if (!confirm(t('Delete this profile? Its transactions stay, but become unassigned (shared).'))) return;
       try {
         await DB.remove('profiles', btn.dataset.deleteProfile);
         await window.refreshProfiles?.();
-        showToast('Profile deleted');
+        showToast(t('Profile deleted'));
         await renderSettings(container);
-      } catch (err) { showToast('Cannot delete: ' + err.message); }
+      } catch (err) { showToast(t('Cannot delete: {msg}', { msg: err.message })); }
+    });
+  });
+
+  // Language chips — persist + full reload so every view/chart re-renders in the new language.
+  container.querySelectorAll('[data-lang]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.lang === getLang()) return;
+      setLang(btn.dataset.lang);
+      location.reload();
     });
   });
 
@@ -152,16 +115,16 @@ function draw(container) {
   if (DEV_TOOLS) {
     const genBtn = container.querySelector('#gen-data-btn');
     genBtn.addEventListener('click', async () => {
-      if (!confirm('Generate 24 months of [TEST] dummy data (accounts, transactions, stocks)?')) return;
+      if (!confirm(t('Generate 24 months of [TEST] dummy data (accounts, transactions, stocks)?'))) return;
       genBtn.disabled = true;
       const label = genBtn.textContent;
-      genBtn.textContent = 'Generating…';
+      genBtn.textContent = t('Generating…');
       try {
         const r = await generateTestData();
-        showToast(`Added ${r.transactions} transactions, ${r.accounts} accounts, ${r.stocks} stocks`);
+        showToast(t('Added {t} transactions, {a} accounts, {s} stocks', { t: r.transactions, a: r.accounts, s: r.stocks }));
         await renderSettings(container);
       } catch (err) {
-        showToast('Generate failed: ' + err.message);
+        showToast(t('Generate failed: {msg}', { msg: err.message }));
         genBtn.disabled = false;
         genBtn.textContent = label;
       }
@@ -169,35 +132,18 @@ function draw(container) {
 
     const wipeBtn = container.querySelector('#wipe-data-btn');
     wipeBtn.addEventListener('click', async () => {
-      if (!confirm('Delete ALL [TEST] dummy data? Real records are not affected.')) return;
+      if (!confirm(t('Delete ALL [TEST] dummy data? Real records are not affected.'))) return;
       wipeBtn.disabled = true;
       try {
         const r = await wipeTestData();
-        showToast(`Wiped ${r.accounts} test accounts + ${r.stocks} stocks`);
+        showToast(t('Wiped {a} test accounts + {s} stocks', { a: r.accounts, s: r.stocks }));
         await renderSettings(container);
       } catch (err) {
-        showToast('Wipe failed: ' + err.message);
+        showToast(t('Wipe failed: {msg}', { msg: err.message }));
         wipeBtn.disabled = false;
       }
     });
   }
-}
-
-function accountRow(acc) {
-  const typeLabel = ACCOUNT_TYPES.find(t => t.value === acc.type)?.label || acc.type;
-  return `
-    <div class="row flex-between">
-      <div>
-        <div class="fw-600">${acc.name}</div>
-        <div class="fs-12 text-dim">${typeLabel} &middot; ${acc.currency}</div>
-      </div>
-      <div class="flex gap-8" style="align-items:center">
-        <span class="fw-600">${formatMoney(acc.initial_balance, acc.currency)}</span>
-        <button data-edit-acc="${acc.id}" class="btn-icon" title="Edit"><i class="ph ph-pencil-simple"></i></button>
-        <button data-delete-acc="${acc.id}" class="btn-icon" title="Delete"><i class="ph ph-trash"></i></button>
-      </div>
-    </div>
-  `;
 }
 
 function profileRow(p) {
@@ -208,8 +154,8 @@ function profileRow(p) {
         <span class="fw-600">${p.name}</span>
       </div>
       <div class="flex gap-8" style="align-items:center">
-        <button data-edit-profile="${p.id}" class="btn-icon" title="Edit"><i class="ph ph-pencil-simple"></i></button>
-        <button data-delete-profile="${p.id}" class="btn-icon" title="Delete"><i class="ph ph-trash"></i></button>
+        <button data-edit-profile="${p.id}" class="btn-icon" title="${t('Edit')}"><i class="ph ph-pencil-simple"></i></button>
+        <button data-delete-profile="${p.id}" class="btn-icon" title="${t('Delete')}"><i class="ph ph-trash"></i></button>
       </div>
     </div>
   `;
@@ -220,21 +166,21 @@ function showProfileForm(container, p) {
   const current = p.color || PROFILE_COLORS[0];
   area.innerHTML = `
     <div class="card mb-12">
-      <h3 style="margin:0 0 12px;font-size:15px">${editingProfileId ? 'Edit' : 'New'} Profile</h3>
+      <h3 style="margin:0 0 12px;font-size:15px">${editingProfileId ? t('Edit Profile') : t('New Profile')}</h3>
       <form id="profile-form">
         <div class="form-group">
-          <label>Name</label>
-          <input id="pf-name" class="form-control" value="${p.name}" placeholder="e.g. Alex" required>
+          <label>${t('Name')}</label>
+          <input id="pf-name" class="form-control" value="${p.name}" placeholder="${t('e.g. Alex')}" required>
         </div>
         <div class="form-group">
-          <label>Colour</label>
+          <label>${t('Colour')}</label>
           <div class="icon-grid">
             ${PROFILE_COLORS.map(c => `<button type="button" class="color-pick ${c === current ? 'active' : ''}" data-color="${c}" style="background:${c}"></button>`).join('')}
           </div>
         </div>
         <div class="flex gap-8">
-          <button type="submit" class="btn btn-primary">${editingProfileId ? 'Save' : 'Create'}</button>
-          <button type="button" class="btn btn-outline" id="pf-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">${editingProfileId ? t('Save') : t('Create')}</button>
+          <button type="button" class="btn btn-outline" id="pf-cancel">${t('Cancel')}</button>
         </div>
       </form>
     </div>
@@ -254,83 +200,20 @@ function showProfileForm(container, p) {
     const data = { name: document.getElementById('pf-name').value.trim(), color: selectedColor };
     if (!data.name) return;
     try {
-      if (editingProfileId) { await DB.update('profiles', editingProfileId, data); showToast('Profile updated'); }
-      else { await DB.create('profiles', data); showToast('Profile created'); }
+      if (editingProfileId) { await DB.update('profiles', editingProfileId, data); showToast(t('Profile updated')); }
+      else { await DB.create('profiles', data); showToast(t('Profile created')); }
       await window.refreshProfiles?.();
       await renderSettings(container);
-    } catch (err) { showToast('Error: ' + err.message); }
+    } catch (err) { showToast(t('Error: {msg}', { msg: err.message })); }
   });
 }
-
-function showForm(container, acc) {
-  const area = container.querySelector('#account-form-area');
-  area.innerHTML = `
-    <div class="card mb-12">
-      <h3 style="margin:0 0 12px;font-size:15px">${editingId ? 'Edit' : 'New'} Account</h3>
-      <form id="acc-form">
-        <div class="form-group">
-          <label>Name</label>
-          <input id="acc-name" class="form-control" value="${acc.name}" placeholder="e.g. Main Bank" required>
-        </div>
-        <div class="form-group">
-          <label>Type</label>
-          <select id="acc-type" class="form-control">
-            ${ACCOUNT_TYPES.map(t => `<option value="${t.value}" ${t.value === acc.type ? 'selected' : ''}>${t.label}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Currency</label>
-          <select id="acc-currency" class="form-control">
-            <option value="EUR" ${acc.currency === 'EUR' ? 'selected' : ''}>EUR</option>
-            <option value="USD" ${acc.currency === 'USD' ? 'selected' : ''}>USD</option>
-            <option value="GBP" ${acc.currency === 'GBP' ? 'selected' : ''}>GBP</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Initial Balance</label>
-          <input id="acc-balance" type="number" step="0.01" class="form-control" value="${acc.initial_balance}">
-        </div>
-        <div class="flex gap-8">
-          <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Create'}</button>
-          <button type="button" class="btn btn-outline" id="acc-cancel">Cancel</button>
-        </div>
-      </form>
-    </div>
-  `;
-
-  area.querySelector('#acc-cancel').addEventListener('click', () => { area.innerHTML = ''; });
-
-  area.querySelector('#acc-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const data = {
-      name: document.getElementById('acc-name').value.trim(),
-      type: document.getElementById('acc-type').value,
-      currency: document.getElementById('acc-currency').value,
-      initial_balance: parseFloat(document.getElementById('acc-balance').value) || 0,
-    };
-    try {
-      if (editingId) {
-        await DB.update('accounts', editingId, data);
-        showToast('Account updated');
-      } else {
-        await DB.create('accounts', data);
-        showToast('Account created');
-      }
-      await renderSettings(container);
-    } catch (err) {
-      showToast('Error: ' + err.message);
-    }
-  });
-}
-
-// (money formatting now lives in js/format.js)
 
 async function exportCSV() {
   try {
     const txs = await DB.getTransactionsWithDetails();
-    if (!txs.length) { showToast('No transactions to export'); return; }
+    if (!txs.length) { showToast(t('No transactions to export')); return; }
 
-    const header = 'Date,Type,Category,Account,Amount,Description';
+    const header = 'Date,Type,Category,Account,Amount,Description';   // CSV columns stay English
     const rows = txs.map(t =>
       `${t.date},${t.type},${t.categories?.name || ''},${t.accounts?.name || ''},${t.amount},"${(t.description || '').replace(/"/g, '""')}"`
     );
@@ -342,8 +225,8 @@ async function exportCSV() {
     a.download = `myfinance-export-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('CSV exported');
+    showToast(t('CSV exported'));
   } catch (err) {
-    showToast('Export failed: ' + err.message);
+    showToast(t('Export failed: {msg}', { msg: err.message }));
   }
 }

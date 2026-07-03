@@ -2,6 +2,7 @@
 // Simple email/password login via Supabase Auth.
 
 import { getClient } from './db.js';
+import { t } from './i18n.js';
 
 export function renderLogin(container, onSuccess) {
   container.innerHTML = `
@@ -9,15 +10,15 @@ export function renderLogin(container, onSuccess) {
       <h2 style="margin:0 0 20px;font-size:20px;text-align:center;color:var(--accent)">MyFinance</h2>
       <form id="login-form">
         <div class="form-group">
-          <label for="login-email">Email</label>
+          <label for="login-email">${t('Email')}</label>
           <input id="login-email" type="email" class="form-control" required autocomplete="email">
         </div>
         <div class="form-group">
-          <label for="login-password">Password</label>
+          <label for="login-password">${t('Password')}</label>
           <input id="login-password" type="password" class="form-control" required autocomplete="current-password">
         </div>
         <div id="login-error" style="color:var(--danger);font-size:13px;margin-bottom:10px;display:none"></div>
-        <button type="submit" class="btn btn-primary" style="width:100%">Sign In</button>
+        <button type="submit" class="btn btn-primary" style="width:100%">${t('Sign In')}</button>
       </form>
     </div>
   `;

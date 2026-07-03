@@ -1,0 +1,122 @@
+/* MyFinance — personalization: right style sidebar + page theme props (bg, radius, density).
+   Loaded after main.css and grid.css — overrides here win. applyPageTheme() (personalize.js)
+   sets --pg-accent/--pg-radius/--pg-gap and the pg-* classes on .grid-host. */
+
+/* #view must also animate `right` (main.css only transitions left/width/transform) */
+#view { transition: left .2s ease, right .2s ease, width .2s ease, transform .2s ease; }
+
+/* ---- Right style panel (mirror of the left sidebar) ---- */
+.style-panel {
+  position: fixed;
+  top: calc(var(--top-h) + env(safe-area-inset-top)); bottom: 0; right: 0;
+  width: 300px; max-width: 86%;
+  background: var(--surface); border-left: 1px solid var(--border);
+  z-index: 30;
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .2s ease;
+}
+body.style-open .style-panel { transform: translateX(0); }
+
+.style-backdrop {
+  position: fixed; inset: 0; background: rgba(20,24,31,.35);
+  z-index: 25; opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+body.style-open .style-backdrop { opacity: 1; pointer-events: auto; }
+
+@media (max-width: 768px) {
+  body.style-open .style-panel { box-shadow: 0 0 40px rgba(20,24,31,.25); }
+}
+@media (min-width: 769px) {
+  .style-backdrop { display: none; }          /* docked: content shifts instead of dimming */
+  body.style-open #view { right: 300px; }
+}
+
+.style-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.style-head h3 { margin: 0; font-size: 15px; }
+.style-head .btn-icon { font-size: 18px; }
+.style-body { flex: 1; overflow-y: auto; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); }
+.style-section { margin-bottom: 18px; }
+.style-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text-dim); font-weight: 600; margin-bottom: 6px;
+}
+.style-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+.style-row-lbl { font-size: 13px; flex-shrink: 0; }
+
+/* Option chips */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.style-section > .chip-row { justify-content: flex-start; }
+.style-chip {
+  padding: 5px 11px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 12px; font-weight: 600; color: var(--text-dim); background: var(--surface);
+  transition: border-color .15s, color .15s, background .15s;
+}
+.style-chip:hover { background: var(--surface-2); }
+.style-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+
+/* Font preview on the chips (stacks mirror FONTS in personalize.js) */
+.ff-serif { font-family: Georgia, "Times New Roman", serif; }
+.ff-mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; }
+.ff-rounded { font-family: "Segoe UI Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+/* Accent swatches + free colour pick */
+.sw-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+.sw {
+  width: 27px; height: 27px; border-radius: 50%; padding: 0;
+  border: 2px solid transparent; box-shadow: inset 0 0 0 2px var(--surface);
+  transition: border-color .15s;
+}
+.sw.active { border-color: var(--text); }
+.sw-custom {
+  position: relative; cursor: pointer;
+  background: conic-gradient(#E11D48, #D97706, #1E7F5C, #0EA5E9, #6366F1, #E11D48);
+}
+.sw-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+/* Switch toggle */
+.style-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 13px; padding: 5px 0; cursor: pointer;
+}
+.style-toggle input {
+  appearance: none; -webkit-appearance: none; margin: 0; flex-shrink: 0; cursor: pointer;
+  position: relative; width: 36px; height: 21px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border); transition: background .15s;
+}
+.style-toggle input::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(20,24,31,.25);
+  transition: left .15s;
+}
+.style-toggle input:checked { background: var(--accent); border-color: var(--accent); }
+.style-toggle input:checked::after { left: 17px; }
+
+/* ---- Page theme prop hooks (vars/classes set on .grid-host by applyPageTheme) ---- */
+/* The page accent cascades into widget internals (bars, links, ghosts) via --accent remap. */
+.grid-host {
+  --accent: var(--pg-accent, #1E7F5C);
+  --accent-dim: color-mix(in srgb, var(--pg-accent, #1E7F5C) 82%, #000);
+  --accent-weak: color-mix(in srgb, var(--pg-accent, #1E7F5C) 12%, #fff);
+}
+.grid-host .widget { border-radius: var(--pg-radius, 14px); }
+.grid-host.pg-flat .widget { box-shadow: none; }
+
+/* Page background derived from the accent */
+.grid-host.pg-bg-tint,
+.grid-host.pg-bg-gradient { border-radius: var(--radius); }
+.grid-host.pg-bg-tint { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.grid-host.pg-bg-gradient {
+  background: linear-gradient(165deg,
+    color-mix(in srgb, var(--accent) 14%, transparent),
+    color-mix(in srgb, var(--accent) 4%, transparent) 55%,
+    transparent);
+}
+
+/* Hide widget titles — but keep them visible while editing so widgets stay identifiable */
+.grid-host.pg-hide-titles .widget-title { display: none; }
+.grid-host.pg-hide-titles .grid-canvas:not(.editing) .widget-head { display: none; }
+.grid-host.pg-hide-titles .grid-canvas.editing .widget-title { display: block; }

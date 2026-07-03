@@ -1,14 +1,15 @@
-// MyFinance — Dashboard engine
-// Loads the shared data context once, then renders a layout onto a CSS grid.
-// Layout = ordered array of { id, type, w, h } (w/h = span in grid cells). Widgets are
-// clamped to their registry min size and to the current column count, and adapt to fill.
+// MyFinance — Dashboard engine (free grid)
+// Renders a layout onto a fixed-cell CSS grid (the data context lives in context.js).
+// Layout = array of { id, type, x, y, w, h, bp? } in grid cells. Legacy items without x/y are
+// placed first-fit row-major (same result CSS auto-placement gave). Base coords belong to the
+// board they were authored on; editing on a NARROWER board never rewrites them — those edits
+// snapshot into a per-item bp[cols] override ({ x,y,w,h } per column count), so a phone edit
+// can't destroy a desktop arrangement. Old clients ignore bp harmlessly.
+// Drag/resize interactions live in grid-dnd.js; board CSS in css/grid.css.
 
-import * as DB from '../db.js';
 import { WIDGETS } from './registry.js';
-import { getProfiles } from '../profiles.js';
-import { getTheme } from './themes.js';
-
-export const MAX_H = 6;
+import { attachGridDnd, cancelActiveDrag } from './grid-dnd.js';
+import { t } from '../i18n.js';
 
 // Grid resolution (columns) by width — more cells = finer placement/sizing.
 export function getCols() {
@@ -18,102 +19,115 @@ export function getCols() {
   return 4;
 }
 
+// Visible rows the board is sized for (content may extend below — the host scrolls).
+export function getRows() { return getCols() === 4 ? 7 : 6; }
+
+// ---- Placement helpers (occupancy set keyed "x:y") ----
+const key = (x, y) => x + ':' + y;
+function fits(occ, x, y, w, h) {
+  for (let i = x; i < x + w; i++) for (let j = y; j < y + h; j++) if (occ.has(key(i, j))) return false;
+  return true;
+}
+function mark(occ, x, y, w, h) {
+  for (let i = x; i < x + w; i++) for (let j = y; j < y + h; j++) occ.add(key(i, j));
+}
+
+// First free rect at or after the cursor, scanning row-major (never backtracks — matches
+// the sparse CSS auto-placement the legacy span-only layouts were built against).
+function firstFit(occ, cur, w, h, cols) {
+  for (let y = cur.y; ; y++) {
+    for (let x = (y === cur.y ? cur.x : 0); x <= cols - w; x++) {
+      if (fits(occ, x, y, w, h)) return { x, y };
+    }
+  }
+}
+
+// Normalize a stored layout for `cols` columns: per-item bp[cols] override wins over the base
+// geometry; sizes clamp to registry minimums and the board width; legacy items without coords
+// are placed first-fit (array order, forward cursor). If any effective rect was made on a
+// wider board (x+w > cols), reflow everything for display instead.
+export function normalizeLayout(layout, cols) { return normalize(layout, cols).items; }
+
+function normalize(layout, cols) {
+  const out = [];
+  const occ = new Set();
+  let cur = { x: 0, y: 0 };
+  let overflowed = false;
+  for (const raw of layout) {
+    const def = WIDGETS[raw.type] || { minW: 1, minH: 1 };
+    const eff = raw.bp?.[cols] ?? raw;
+    const w = Math.min(Math.max(eff.w || def.minW, def.minW), cols);
+    const h = Math.max(eff.h || def.minH, def.minH);
+    let x = eff.x, y = eff.y;
+    if (Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0) {
+      if (x + (eff.w || w) > cols) overflowed = true; // stored for a wider board
+      x = Math.min(x, cols - w);
+    } else {
+      ({ x, y } = firstFit(occ, cur, w, h, cols));
+      cur = { x, y };
+    }
+    mark(occ, x, y, w, h);
+    out.push({ id: raw.id, type: raw.type, x, y, w, h });
+  }
+  return { items: overflowed ? reflowToCols(out, cols) : out, overflowed };
+}
+
+// Deterministic display-only reflow into a narrower board: (y,x) order, first-fit from origin.
+function reflowToCols(items, cols) {
+  const sorted = items.map((it, i) => [it, i])
+    .sort((a, b) => a[0].y - b[0].y || a[0].x - b[0].x || a[1] - b[1]).map(p => p[0]);
+  const occ = new Set();
+  return sorted.map(it => {
+    const w = Math.min(it.w, cols);
+    let pos = null;
+    for (let y = 0; !pos; y++) {
+      for (let x = 0; x <= cols - w; x++) if (fits(occ, x, y, w, it.h)) { pos = { x, y }; break; }
+    }
+    mark(occ, pos.x, pos.y, w, it.h);
+    return { ...it, x: pos.x, y: pos.y, w };
+  });
+}
+
 let charts = [];
 let pendingRaf = null;
-
-export async function loadContext() {
-  const [transactions, accounts, stocks, prices] = await Promise.all([
-    DB.getTransactionsWithDetails(),
-    DB.getAll('accounts'),
-    DB.getAll('stocks'),
-    DB.getStockPrices(),
-  ]);
-  const priceMap = {};
-  prices.forEach(p => { priceMap[p.ticker] = p.price; });
-
-  const now = new Date();
-  const currentMonth = now.toISOString().slice(0, 7);
-  const monthTx = transactions.filter(t => t.date.startsWith(currentMonth));
-  const monthIncome = sum(monthTx, 'income');
-  const monthExpense = sum(monthTx, 'expense');
-  const net = monthIncome - monthExpense;
-  const savingsRate = monthIncome > 0 ? (net / monthIncome * 100) : 0;
-
-  const initialTotal = accounts.reduce((s, a) => s + parseFloat(a.initial_balance), 0);
-  const portfolioValue = stocks.reduce((s, st) => s + st.quantity * (priceMap[st.ticker] || st.purchase_price), 0);
-
-  const months = lastMonths(6);
-  const series = months.map(m => {
-    const upTo = transactions.filter(t => t.date.slice(0, 7) <= m);
-    return initialTotal + sum(upTo, 'income') - sum(upTo, 'expense') + portfolioValue;
-  });
-  const netWorth = series[series.length - 1];
-  const prev = series[series.length - 2] ?? netWorth;
-  const trendPct = prev ? ((netWorth - prev) / Math.abs(prev)) * 100 : 0;
-
-  const byCat = {};
-  monthTx.filter(t => t.type === 'expense').forEach(t => {
-    const name = t.categories?.name || 'Other';
-    byCat[name] = byCat[name] || { amount: 0, icon: t.categories?.icon || 'ph-tag', color: t.categories?.color || '#6B7280' };
-    byCat[name].amount += parseFloat(t.amount);
-  });
-  const topCats = Object.entries(byCat).sort((a, b) => b[1].amount - a[1].amount).slice(0, 4);
-  const maxCat = topCats.length ? topCats[0][1].amount : 1;
-
-  const accountBalances = accounts.map(a => {
-    const at = transactions.filter(t => t.account_id === a.id);
-    return { name: a.name, currency: a.currency, balance: parseFloat(a.initial_balance) + sum(at, 'income') - sum(at, 'expense') };
-  });
-
-  // Transaction + stock visuals
-  const recentTx = [...transactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 10);
-  const monthlyIncome = months.map(m => sum(transactions.filter(t => t.date.startsWith(m)), 'income'));
-  const monthlyExpense = months.map(m => sum(transactions.filter(t => t.date.startsWith(m)), 'expense'));
-  const holdings = stocks.map(st => {
-    const price = priceMap[st.ticker] || st.purchase_price;
-    const value = st.quantity * price;
-    const cost = st.quantity * st.purchase_price;
-    const gain = value - cost;
-    return { ticker: st.ticker, name: st.name, value, gain, gainPct: cost > 0 ? gain / cost * 100 : 0, currency: st.currency };
-  });
-  const portfolioCost = stocks.reduce((s, st) => s + st.quantity * st.purchase_price, 0);
-  const portfolioGain = portfolioValue - portfolioCost;
-
-  return {
-    transactions, accounts, stocks, priceMap, profiles: getProfiles(), monthTx,
-    months, monthLabels: months.map(monthLabel), series, netWorth, trendPct,
-    monthIncome, monthExpense, net, savingsRate,
-    topCats, maxCat, accountBalances, portfolioValue,
-    recentTx, monthlyIncome, monthlyExpense, holdings,
-    portfolioGain, portfolioGainPct: portfolioCost > 0 ? portfolioGain / portfolioCost * 100 : 0,
-    accent: getTheme('default').accent,   // overridden per-page by the active theme
-    font: '',                             // overridden per-page by the active theme
-    addChart: () => {},
-  };
-}
+let hostRO = null;
 
 export function renderGrid(container, layout, ctx, opts = {}) {
   const { editing = false, onChange } = opts;
+  cancelActiveDrag();   // a re-render mid-drag would orphan the drag clone/ghost
   if (pendingRaf) { cancelAnimationFrame(pendingRaf); pendingRaf = null; }
   charts.forEach(c => { try { c.destroy(); } catch (_) {} });
   charts = [];
   ctx.addChart = (c) => charts.push(c);
 
   const cols = getCols();
+  const rows = getRows();
+  const { items, overflowed } = normalize(layout, cols);
+
   container.innerHTML = `
     <div class="grid-canvas ${editing ? 'editing' : ''}" style="--cols:${cols}">
-      ${layout.map(item => {
+      ${items.map(item => {
         const w = WIDGETS[item.type];
         if (!w) return '';
-        const cw = Math.min(Math.max(item.w, w.minW), cols);
-        const ch = Math.max(item.h, w.minH);
         return `
-          <div class="widget" data-id="${item.id}" style="grid-column:span ${cw};grid-row:span ${ch}">
-            <div class="widget-head"><span class="widget-title">${w.title}</span>${editing ? editControls() : ''}</div>
+          <div class="widget" data-id="${item.id}" style="grid-column:${item.x + 1} / span ${item.w};grid-row:${item.y + 1} / span ${item.h}">
+            <div class="widget-head"><span class="widget-title">${t(w.title)}</span>${editing ? `<span class="widget-ctrls"><button class="wc wc-rm" data-act="rm" title="${t('Remove')}">✕</button></span>` : ''}</div>
             <div class="widget-body" data-body="${item.id}"></div>
           </div>`;
       }).join('')}
     </div>`;
+
+  // Cell height: the visible board (host height) split into `rows` rows; grid-auto-rows in
+  // grid.css consumes --cell-h. Content taller than the board just makes the host scroll.
+  const canvas = container.firstElementChild;
+  const setCellH = () => {
+    const gap = parseFloat(getComputedStyle(canvas).gap) || 10;
+    const hostH = container.clientHeight;
+    if (hostH > 0) canvas.style.setProperty('--cell-h', ((hostH - (rows - 1) * gap) / rows).toFixed(2) + 'px');
+  };
+  setCellH();
+  hostRO?.disconnect();
+  if (window.ResizeObserver) { hostRO = new ResizeObserver(setCellH); hostRO.observe(container); }
 
   // Render bodies after layout so chart canvases have real dimensions.
   // Snapshot the accent/font for this render so a rapid re-render can't repaint with another page's theme.
@@ -121,58 +135,36 @@ export function renderGrid(container, layout, ctx, opts = {}) {
   pendingRaf = requestAnimationFrame(() => {
     pendingRaf = null;
     ctx.accent = accent; ctx.font = font;
-    layout.forEach(item => {
+    items.forEach(item => {
       const w = WIDGETS[item.type];
       const el = container.querySelector(`[data-body="${item.id}"]`);
-      if (w && el) { try { w.render(el, ctx); } catch (err) { el.innerHTML = `<div class="empty fs-12">Widget error</div>`; } }
+      if (w && el) { try { w.render(el, ctx); } catch (err) { el.innerHTML = `<div class="empty fs-12">${t('Widget error')}</div>`; } }
     });
   });
 
-  // Edit controls: resize (span cells) / remove → emit a new layout.
+  // Edit mode: remove buttons here; drag-to-move / tap-to-select / handle-resize in grid-dnd.
   if (editing && typeof onChange === 'function') {
-    container.querySelectorAll('.widget').forEach(wEl => {
-      const id = wEl.dataset.id;
-      const item = layout.find(x => x.id === id);
-      if (!item) return;
-      const wdef = WIDGETS[item.type];
-      wEl.querySelectorAll('[data-act]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const act = btn.dataset.act;
-          if (act === 'rm') { onChange(layout.filter(x => x.id !== id)); return; }
-          const next = layout.map(x => ({ ...x }));
-          const it = next.find(x => x.id === id);
-          if (act === 'w+') it.w = Math.min(cols, (it.w || wdef.minW) + 1);
-          if (act === 'w-') it.w = Math.max(wdef.minW, (it.w || wdef.minW) - 1);
-          if (act === 'h+') it.h = Math.min(MAX_H, (it.h || wdef.minH) + 1);
-          if (act === 'h-') it.h = Math.max(wdef.minH, (it.h || wdef.minH) - 1);
-          onChange(next);
-        });
+    // Persistence adapter: on a narrower board than the layout was authored for (display was
+    // reflowed, or bp overrides already exist here), edits snapshot into bp[cols] and the base
+    // coords stay untouched; on the layout's own board, edits write the base coords directly.
+    const narrow = overflowed || layout.some(it => it.bp && it.bp[cols]);
+    const rawById = new Map(layout.map(r => [r.id, r]));
+    const save = (display) => onChange(display.map(d => {
+      const raw = rawById.get(d.id);
+      if (!raw) return { id: d.id, type: d.type, x: d.x, y: d.y, w: d.w, h: d.h };
+      if (narrow) return { ...raw, bp: { ...raw.bp, [cols]: { x: d.x, y: d.y, w: d.w, h: d.h } } };
+      const { bp, ...base } = raw;
+      const stored = { ...base, x: d.x, y: d.y, w: d.w, h: d.h };
+      if (bp) stored.bp = bp;
+      return stored;
+    }));
+    canvas.querySelectorAll('[data-act="rm"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.closest('.widget').dataset.id;
+        save(items.filter(x => x.id !== id));
       });
     });
+    attachGridDnd(canvas, items, { cols, rows, onChange: save });
   }
-}
-
-function editControls() {
-  return `<span class="widget-ctrls">
-    <button class="wc" data-act="w-" title="Narrower">–W</button>
-    <button class="wc" data-act="w+" title="Wider">+W</button>
-    <button class="wc" data-act="h-" title="Shorter">–H</button>
-    <button class="wc" data-act="h+" title="Taller">+H</button>
-    <button class="wc wc-rm" data-act="rm" title="Remove">✕</button>
-  </span>`;
-}
-
-// Helpers
-function sum(txs, type) { return txs.filter(t => t.type === type).reduce((s, t) => s + parseFloat(t.amount), 0); }
-function lastMonths(n) {
-  const out = [];
-  const now = new Date();
-  for (let i = n - 1; i >= 0; i--) out.push(new Date(now.getFullYear(), now.getMonth() - i, 1).toISOString().slice(0, 7));
-  return out;
-}
-function monthLabel(ym) {
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const [y, m] = ym.split('-');
-  return `${names[parseInt(m) - 1]} ${y.slice(2)}`;
 }

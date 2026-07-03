@@ -6,6 +6,8 @@
 import * as DB from './db.js';
 import { openSheet } from './sheet.js';
 import { iconPickerHTML, bindIconPicker } from './icons.js';
+import { esc } from './format.js';
+import { t } from './i18n.js';
 
 let folders = [];
 let pages = [];
@@ -74,8 +76,9 @@ export function renderSidebar(el, activeKey, handlers) {
   const open = openSet();
 
   const pageItem = (p) => `
-    <button class="nav-item ${activeKey === 'p:' + p.id ? 'active' : ''}" data-page="${p.id}" title="${p.name}">
-      <i class="ph ${p.icon || 'ph-squares-four'}"></i><span class="nav-label">${p.name}</span>
+    <button class="nav-item ${activeKey === 'p:' + p.id ? 'active' : ''}" data-page="${p.id}" title="${esc(p.name)}">
+      <i class="ph ${esc(p.icon || 'ph-squares-four')}"></i><span class="nav-label">${esc(p.name)}</span>
+      <span class="nav-edit" data-page-opts="${p.id}" title="${t('Page options')}">⋯</span>
     </button>`;
 
   const topPages = pages.filter(p => !p.folder_id);
@@ -87,22 +90,29 @@ export function renderSidebar(el, activeKey, handlers) {
         const fpages = pages.filter(p => p.folder_id === f.id);
         return `
           <div class="nav-folder">
-            <button class="nav-item nav-folder-head" data-folder="${f.id}" title="${f.name}">
-              <i class="ph ${f.icon || 'ph-folder'}"></i><span class="nav-label">${f.name}</span>
+            <button class="nav-item nav-folder-head" data-folder="${f.id}" title="${esc(f.name)}">
+              <i class="ph ${esc(f.icon || 'ph-folder')}"></i><span class="nav-label">${esc(f.name)}</span>
               <i class="ph ph-caret-${isOpen ? 'down' : 'right'} nav-caret"></i>
-              <span class="nav-edit" data-folder-opts="${f.id}" title="Folder options">⋯</span>
+              <span class="nav-edit" data-folder-opts="${f.id}" title="${t('Folder options')}">⋯</span>
             </button>
             <div class="nav-folder-pages" ${isOpen ? '' : 'hidden'}>${fpages.map(pageItem).join('')}</div>
           </div>`;
       }).join('')}
       ${topPages.map(pageItem).join('')}
-    </div>
-    <div class="nav-actions">
-      <button class="nav-item" data-action="add-page"><i class="ph ph-plus"></i><span class="nav-label">Page</span></button>
-      <button class="nav-item" data-action="add-folder"><i class="ph ph-folder-simple-plus"></i><span class="nav-label">Folder</span></button>
+      <div class="nav-new">
+        <button class="nav-item" data-action="add-page" title="${t('New page')}"><i class="ph ph-plus"></i><span class="nav-label">${t('Page')}</span></button>
+        <button class="nav-item" data-action="add-folder" title="${t('New folder')}"><i class="ph ph-folder-simple-plus"></i><span class="nav-label">${t('Folder')}</span></button>
+      </div>
     </div>`;
 
-  el.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => _handlers.onSelectPage?.(b.dataset.page)));
+  el.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', (e) => {
+    if (e.target.closest('[data-page-opts]')) return;   // ⋯ handled below
+    _handlers.onSelectPage?.(b.dataset.page);
+  }));
+  el.querySelectorAll('[data-page-opts]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openPageSheet(getPage(b.dataset.pageOpts));
+  }));
   el.querySelectorAll('[data-folder]').forEach(b => b.addEventListener('click', (e) => {
     if (e.target.closest('[data-folder-opts]')) return;   // ⋯ handled below
     toggleFolder(b.dataset.folder);
@@ -114,26 +124,82 @@ export function renderSidebar(el, activeKey, handlers) {
   }));
   el.querySelector('[data-action="add-page"]').addEventListener('click', () => _handlers.onAddPage?.());
   el.querySelector('[data-action="add-folder"]').addEventListener('click', () => openFolderSheet(null));
+
+  bindStickyFade(el);
 }
 
 function rerenderSidebar() { if (_el) renderSidebar(_el, _active, _handlers); }
+
+// The "+ Page / + Folder" block (.nav-new) sticks to the bottom of .nav-scroll; the fade above
+// it must only show while the block is actually stuck with items still scrolled behind it —
+// pure CSS can't know that, so a scroll handler toggles .stuck. The scroll listener dies with
+// the replaced node on re-render; the window resize listener is managed so re-renders (e.g.
+// folder toggles) never stack duplicates.
+let _onNavResize = null;
+function bindStickyFade(el) {
+  const sc = el.querySelector('.nav-scroll');
+  if (!sc) return;
+  const update = () => sc.classList.toggle('stuck',
+    sc.scrollHeight > sc.clientHeight && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 2);
+  sc.addEventListener('scroll', update, { passive: true });
+  if (_onNavResize) window.removeEventListener('resize', _onNavResize);
+  window.addEventListener('resize', (_onNavResize = update));
+  update();
+}
+
+// Page options (name / folder / icon / delete) — opened from the page item's ⋯.
+// Theme styling lives in the dashboard's personalize panel, page creation in the page gallery.
+function openPageSheet(page) {
+  if (!page) return;
+  const { el, close } = openSheet(`
+    <h3>${t('Page options')}</h3>
+    <div class="form-group"><label>${t('Name')}</label><input id="pg-name" class="form-control" value="${esc(page.name)}"></div>
+    <div class="form-group"><label>${t('Folder')}</label>
+      <select id="pg-folder" class="form-control">
+        <option value="">${t('— None (top level) —')}</option>
+        ${folders.map(f => `<option value="${f.id}" ${f.id === page.folder_id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>${t('Icon')}</label>${iconPickerHTML(page.icon || 'ph-squares-four')}</div>
+    <div class="flex gap-8" style="margin-top:8px">
+      <button class="btn btn-primary" id="pg-save" style="flex:1">${t('Save')}</button>
+      ${pages.length > 1 ? `<button class="btn btn-danger" id="pg-del">${t('Delete')}</button>` : ''}
+    </div>`);
+
+  const getIcon = bindIconPicker(el, page.icon || 'ph-squares-four');
+  el.querySelector('#pg-save').addEventListener('click', async () => {
+    const name = el.querySelector('#pg-name').value.trim() || page.name;
+    const folder_id = el.querySelector('#pg-folder').value || null;
+    close();
+    try { await updatePage(page.id, { name, icon: getIcon(), folder_id }); }
+    catch (err) { showToast(t('Save failed') + ': ' + err.message); return; }
+    window.rerenderApp?.();
+  });
+  el.querySelector('#pg-del')?.addEventListener('click', async () => {
+    if (!confirm(t('Delete this page?'))) return;
+    close();
+    try { await deletePage(page.id); }
+    catch (err) { showToast(t('Delete failed') + ': ' + err.message); return; }
+    window.rerenderApp?.();
+  });
+}
 
 // Create / edit a folder (name + icon), with delete when editing.
 function openFolderSheet(folder) {
   const editing = !!folder;
   const cur = folder || { name: '', icon: 'ph-folder' };
   const { el, close } = openSheet(`
-    <h3>${editing ? 'Edit' : 'New'} folder</h3>
-    <div class="form-group"><label>Name</label><input id="fd-name" class="form-control" value="${cur.name}" placeholder="e.g. Home"></div>
-    <div class="form-group"><label>Icon</label>${iconPickerHTML(cur.icon)}</div>
+    <h3>${editing ? t('Edit folder') : t('New folder')}</h3>
+    <div class="form-group"><label>${t('Name')}</label><input id="fd-name" class="form-control" value="${esc(cur.name)}" placeholder="${t('e.g. Home')}"></div>
+    <div class="form-group"><label>${t('Icon')}</label>${iconPickerHTML(cur.icon)}</div>
     <div class="flex gap-8">
-      <button class="btn btn-primary" id="fd-save" style="flex:1">${editing ? 'Save' : 'Create'}</button>
-      ${editing ? '<button class="btn btn-danger" id="fd-del">Delete</button>' : ''}
+      <button class="btn btn-primary" id="fd-save" style="flex:1">${editing ? t('Save') : t('Create')}</button>
+      ${editing ? `<button class="btn btn-danger" id="fd-del">${t('Delete')}</button>` : ''}
     </div>`);
 
   const getIcon = bindIconPicker(el, cur.icon);
   el.querySelector('#fd-save').addEventListener('click', async () => {
-    const name = el.querySelector('#fd-name').value.trim() || 'Folder';
+    const name = el.querySelector('#fd-name').value.trim() || t('Folder');
     const icon = getIcon();
     close();
     if (editing) await updateFolder(folder.id, { name, icon });
@@ -141,7 +207,7 @@ function openFolderSheet(folder) {
     rerenderSidebar();
   });
   el.querySelector('#fd-del')?.addEventListener('click', async () => {
-    if (!confirm('Delete this folder? Its pages move to the top level (not deleted).')) return;
+    if (!confirm(t('Delete this folder? Its pages move to the top level (not deleted).'))) return;
     close();
     await deleteFolder(folder.id);
     rerenderSidebar();

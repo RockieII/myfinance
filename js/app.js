@@ -11,6 +11,8 @@ import { renderCategories } from './views/categories.js';
 import { renderSettings } from './views/settings.js';
 import { renderHelp } from './views/help.js';
 import { loadProfiles } from './profiles.js';
+import { openPageGallery } from './dashboards/page-gallery.js';
+import { t } from './i18n.js';
 import * as nav from './nav.js';
 
 // Service worker
@@ -42,31 +44,29 @@ function renderSidebarNow() {
       closeDrawer();
       if (isDashTab(getTab())) render(); else location.hash = 'dashboard';
     },
-    onAddPage: async () => {
-      const row = await nav.createPage({ name: 'New page', icon: 'ph-squares-four', theme: 'default', layout: [] });
-      nav.setCurrent(row.id);
+    onAddPage: () => {
       closeDrawer();
-      if (isDashTab(getTab())) render(); else location.hash = 'dashboard';
+      openPageGallery();
     },
   });
 }
 
 async function render() {
-  const t = getTab();
+  const tab = getTab();
   // Leaving the dashboard invalidates its cached data context, so returning (e.g. after a Data
   // edit) reloads; switching between pages stays cached (no refetch per page tap).
-  if (!isDashTab(t)) window.invalidateDashboards?.();
-  viewEl.classList.toggle('scrollable', SCROLLABLE_VIEWS.has(t));
+  if (!isDashTab(tab)) window.invalidateDashboards?.();
+  viewEl.classList.toggle('scrollable', SCROLLABLE_VIEWS.has(tab));
   viewEl.innerHTML = '';
   renderSidebarNow();
 
-  if (isDashTab(t)) {
-    tabLabel.textContent = nav.getPage(nav.getCurrentId())?.name || 'Dashboard';
+  if (isDashTab(tab)) {
+    tabLabel.textContent = nav.getPage(nav.getCurrentId())?.name || t('Dashboard');
     await renderDashboards(viewEl);
   } else {
-    tabLabel.textContent = LABELS[t] || t;
-    const fn = SPECIAL[t];
-    if (fn) await fn(viewEl); else viewEl.innerHTML = '<div class="empty">Unknown view.</div>';
+    tabLabel.textContent = LABELS[tab] ? t(LABELS[tab]) : tab;
+    const fn = SPECIAL[tab];
+    if (fn) await fn(viewEl); else viewEl.innerHTML = `<div class="empty">${t('Unknown view.')}</div>`;
   }
 }
 
@@ -82,6 +82,16 @@ document.getElementById('data-btn').addEventListener('click', () => { location.h
 document.getElementById('settings-btn').addEventListener('click', () => { location.hash = 'settings'; });
 
 const sidebarToggle = document.getElementById('sidebar-toggle');
+// Localize the static header controls (index.html markup can't call t()).
+sidebarToggle.title = t('Collapse / expand menu');
+sidebarToggle.setAttribute('aria-label', t('Toggle menu'));
+const dataBtn = document.getElementById('data-btn');
+dataBtn.title = t('Add / manage data');
+dataBtn.setAttribute('aria-label', t('Data'));
+const settingsBtn = document.getElementById('settings-btn');
+settingsBtn.title = t('Settings');
+settingsBtn.setAttribute('aria-label', t('Settings'));
+sidebarEl.setAttribute('aria-label', t('Dashboards'));
 if (localStorage.getItem('mf.sidebarCollapsed') === '1') document.body.classList.add('sidebar-collapsed');
 sidebarToggle.addEventListener('click', () => {
   if (window.innerWidth >= 769) {   // desktop: collapse to icon rail

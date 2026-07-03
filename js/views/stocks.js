@@ -6,6 +6,7 @@ import * as DB from '../db.js';
 import { FINNHUB_API_KEY, STOCK_CACHE_MINUTES } from '../config.js';
 import { formatMoney } from '../format.js';
 import { openSheet } from '../sheet.js';
+import { t } from '../i18n.js';
 
 let stocks = [];
 let priceCache = {};
@@ -34,19 +35,19 @@ function draw(container) {
     <div class="card mb-12">
       <div class="flex-between">
         <div>
-          <div class="fs-12 text-dim">Portfolio Value</div>
+          <div class="fs-12 text-dim">${t('Portfolio Value')}</div>
           <div class="fs-24 fw-600 money">${formatMoney(totalCurrent)}</div>
         </div>
         <div style="text-align:right">
-          <div class="fs-12 text-dim">Total Gain/Loss</div>
+          <div class="fs-12 text-dim">${t('Total Gain/Loss')}</div>
           <div class="fw-600 money ${gainClass}">${totalGain >= 0 ? '+' : ''}${formatMoney(totalGain)} (${gainPct.toFixed(1)}%)</div>
         </div>
       </div>
     </div>
 
     <div class="flex-between mb-12">
-      <button class="btn btn-outline btn-sm" id="refresh-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
-      <button class="btn btn-primary btn-sm" id="add-stock-btn">+ Add Holding</button>
+      <button class="btn btn-outline btn-sm" id="refresh-btn"><i class="ph ph-arrows-clockwise"></i> ${t('Refresh')}</button>
+      <button class="btn btn-primary btn-sm" id="add-stock-btn">${t('+ Add Holding')}</button>
     </div>
 
     <div class="list-panel">
@@ -75,7 +76,7 @@ function renderPage(container) {
     const slice = stocks.slice(page * n, page * n + n);
     region.innerHTML = stocks.length
       ? `<div class="card" style="padding:0">${slice.map(stockRow).join('')}</div>`
-      : '<div class="empty">No stock holdings yet.</div>';
+      : `<div class="empty">${t('No stock holdings yet.')}</div>`;
     return pages;
   };
 
@@ -96,20 +97,20 @@ function renderPage(container) {
   });
   region.querySelectorAll('[data-delete-stock]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Delete this holding?')) return;
+      if (!confirm(t('Delete this holding?'))) return;
       try {
         await DB.remove('stocks', btn.dataset.deleteStock);
-        showToast('Holding deleted');
+        showToast(t('Holding deleted'));
         await renderStocks(container);
-      } catch (err) { showToast('Error: ' + err.message); }
+      } catch (err) { showToast(t('Error: {msg}', { msg: err.message })); }
     });
   });
 
   const pager = container.querySelector('#stock-pager');
   pager.innerHTML = stocks.length > perPage
-    ? `<button id="pg-prev" ${page === 0 ? 'disabled' : ''}>◂ Prev</button>
-       <span>Page ${page + 1} / ${pages}</span>
-       <button id="pg-next" ${page >= pages - 1 ? 'disabled' : ''}>Next ▸</button>`
+    ? `<button id="pg-prev" ${page === 0 ? 'disabled' : ''}>◂ ${t('Prev')}</button>
+       <span>${t('Page {p} / {n}', { p: page + 1, n: pages })}</span>
+       <button id="pg-next" ${page >= pages - 1 ? 'disabled' : ''}>${t('Next')} ▸</button>`
     : '';
   pager.querySelector('#pg-prev')?.addEventListener('click', () => { page--; renderPage(container); });
   pager.querySelector('#pg-next')?.addEventListener('click', () => { page++; renderPage(container); });
@@ -131,23 +132,23 @@ function stockRow(st) {
     <div class="row" style="padding:11px 16px;flex-wrap:wrap">
       <div style="flex:1;min-width:120px">
         <div class="fw-600">${st.ticker}</div>
-        <div class="fs-12 text-dim">${st.name || st.ticker} &middot; ${st.quantity} shares</div>
+        <div class="fs-12 text-dim">${st.name || st.ticker} &middot; ${t('{n} shares', { n: st.quantity })}</div>
       </div>
       <div style="text-align:right;min-width:100px">
         ${currentPrice !== null ? `
           <div class="fw-600 money">${formatMoney(currentPrice, st.currency)}</div>
-          <div class="fs-12 ${changePct >= 0 ? 'text-up' : 'text-down'}">${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%${stale ? ' <span class="text-dim">(stale)</span>' : ''}</div>
-        ` : '<div class="text-dim fs-12">No price data</div>'}
+          <div class="fs-12 ${changePct >= 0 ? 'text-up' : 'text-down'}">${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%${stale ? ` <span class="text-dim">(${t('stale')})</span>` : ''}</div>
+        ` : `<div class="text-dim fs-12">${t('No price data')}</div>`}
       </div>
       <div style="text-align:right;min-width:100px">
         ${gain !== null ? `
           <div class="fw-600 money ${gainClass}">${gain >= 0 ? '+' : ''}${formatMoney(gain, st.currency)}</div>
           <div class="fs-12 ${gainClass}">${gainPct.toFixed(1)}%</div>
-        ` : `<div class="text-dim fs-12">Avg ${formatMoney(st.purchase_price, st.currency)}</div>`}
+        ` : `<div class="text-dim fs-12">${t('Avg')} ${formatMoney(st.purchase_price, st.currency)}</div>`}
       </div>
       <div class="flex gap-8" style="flex-shrink:0">
-        <button data-edit-stock="${st.id}" class="btn-icon" title="Edit"><i class="ph ph-pencil-simple"></i></button>
-        <button data-delete-stock="${st.id}" class="btn-icon" title="Delete"><i class="ph ph-trash"></i></button>
+        <button data-edit-stock="${st.id}" class="btn-icon" title="${t('Edit')}"><i class="ph ph-pencil-simple"></i></button>
+        <button data-delete-stock="${st.id}" class="btn-icon" title="${t('Delete')}"><i class="ph ph-trash"></i></button>
       </div>
     </div>
   `;
@@ -155,30 +156,30 @@ function stockRow(st) {
 
 function openStockForm(container, editingId, st) {
   const { el, close } = openSheet(`
-    <h3>${editingId ? 'Edit' : 'New'} Holding</h3>
+    <h3>${editingId ? t('Edit Holding') : t('New Holding')}</h3>
     <form id="stock-form">
       <div class="form-group">
-        <label>Ticker</label>
-        <input id="st-ticker" class="form-control" value="${st.ticker}" placeholder="e.g. AAPL, VWCE.DE" required style="text-transform:uppercase">
+        <label>${t('Ticker')}</label>
+        <input id="st-ticker" class="form-control" value="${st.ticker}" placeholder="${t('e.g. AAPL, VWCE.DE')}" required style="text-transform:uppercase">
       </div>
       <div class="form-group">
-        <label>Name</label>
-        <input id="st-name" class="form-control" value="${st.name || ''}" placeholder="e.g. Apple Inc.">
+        <label>${t('Name')}</label>
+        <input id="st-name" class="form-control" value="${st.name || ''}" placeholder="${t('e.g. Apple Inc.')}">
       </div>
       <div class="form-group">
-        <label>Shares</label>
+        <label>${t('Shares')}</label>
         <input id="st-qty" type="number" step="0.0001" min="0.0001" class="form-control" value="${st.quantity || ''}" required>
       </div>
       <div class="form-group">
-        <label>Avg. Purchase Price</label>
+        <label>${t('Avg. Purchase Price')}</label>
         <input id="st-price" type="number" step="0.0001" min="0" class="form-control" value="${st.purchase_price || ''}" required>
       </div>
       <div class="form-group">
-        <label>Purchase Date</label>
+        <label>${t('Purchase Date')}</label>
         <input id="st-date" type="date" class="form-control" value="${st.purchase_date}">
       </div>
       <div class="form-group">
-        <label>Currency</label>
+        <label>${t('Currency')}</label>
         <select id="st-currency" class="form-control">
           <option value="USD" ${st.currency === 'USD' ? 'selected' : ''}>USD</option>
           <option value="EUR" ${st.currency === 'EUR' ? 'selected' : ''}>EUR</option>
@@ -186,8 +187,8 @@ function openStockForm(container, editingId, st) {
         </select>
       </div>
       <div class="flex gap-8">
-        <button type="submit" class="btn btn-primary">${editingId ? 'Save' : 'Add'}</button>
-        <button type="button" class="btn btn-outline" id="st-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">${editingId ? t('Save') : t('Add')}</button>
+        <button type="button" class="btn btn-outline" id="st-cancel">${t('Cancel')}</button>
       </div>
     </form>
   `);
@@ -206,22 +207,22 @@ function openStockForm(container, editingId, st) {
     try {
       if (editingId) {
         await DB.update('stocks', editingId, data);
-        showToast('Holding updated');
+        showToast(t('Holding updated'));
       } else {
         await DB.create('stocks', data);
-        showToast('Holding added');
+        showToast(t('Holding added'));
       }
       close();
       await renderStocks(container);
-    } catch (err) { showToast('Error: ' + err.message); }
+    } catch (err) { showToast(t('Error: {msg}', { msg: err.message })); }
   });
 }
 
 async function refreshAllPrices(container) {
   const tickers = [...new Set(stocks.map(s => s.ticker))];
-  if (!tickers.length) { showToast('No stocks to refresh'); return; }
+  if (!tickers.length) { showToast(t('No stocks to refresh')); return; }
 
-  showToast('Fetching prices...');
+  showToast(t('Fetching prices...'));
   let updated = 0;
   for (const ticker of tickers) {
     try {
@@ -235,7 +236,7 @@ async function refreshAllPrices(container) {
       console.warn(`Failed to fetch ${ticker}:`, err);
     }
   }
-  showToast(`Updated ${updated}/${tickers.length} prices`);
+  showToast(t('Updated {u}/{n} prices', { u: updated, n: tickers.length }));
   await renderStocks(container);
 }
 

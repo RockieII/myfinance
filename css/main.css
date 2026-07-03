@@ -74,7 +74,6 @@ body:not(.authed) .sidebar, body:not(.authed) .topbar { display: none; }
 body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
 
 .nav-scroll { flex: 1; overflow-y: auto; padding: 8px; }
-.nav-actions { border-top: 1px solid var(--border); padding: 6px; display: flex; gap: 6px; }
 .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--text); font-size: 14px; text-align: left; }
 .nav-item:hover { background: var(--surface-2); }
 .nav-item.active { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
@@ -82,8 +81,29 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
 .nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .nav-caret { font-size: 12px !important; color: var(--text-dim); width: auto !important; }
 .nav-edit { color: var(--text-dim); padding: 0 4px; font-weight: 700; }
+/* ⋯ options: revealed on hover/keyboard focus on pointer devices; always visible (dimmed) on touch */
+@media (hover: hover) {
+  .nav-edit { opacity: 0; transition: opacity .15s; }
+  .nav-item:hover .nav-edit,
+  .nav-item:focus-visible .nav-edit { opacity: 1; }
+}
+@media (hover: none) {
+  .nav-edit { opacity: 1; }
+}
 .nav-folder-pages { padding-left: 12px; }
-.nav-actions .nav-item { justify-content: center; font-size: 13px; color: var(--text-dim); }
+
+/* "+ Page / + Folder" — last items of the list; stick to the bottom when the list overflows,
+   so items scroll behind them. .stuck (toggled by nav.js) shows the fade above the block only
+   while it is actually stuck with content below. */
+.nav-new { position: sticky; bottom: 0; background: var(--surface); }
+.nav-new .nav-item { color: var(--text-dim); }
+.nav-new .nav-item:hover { color: var(--text); }
+.nav-new::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 28px;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  pointer-events: none; opacity: 0; transition: opacity .15s;
+}
+.nav-scroll.stuck .nav-new::before { opacity: 1; }
 
 /* Main content — fixed region; never scrolls unless .scrollable */
 #view {
@@ -236,6 +256,10 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
 .cat-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
 .cat-bar .amt { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .link { color: var(--accent); font-size: 12px; font-weight: 600; }
+
+/* Two-segment proportion bar (cash-vs-invested widget) */
+.split-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; margin: 6px 0; }
+.split-bar span { display: block; height: 100%; }
 
 .trend .chart-box { height: 118px; margin-top: 6px; }
 
