@@ -7,7 +7,7 @@ export const PREBUILT = [
     id: 'overview', name: 'Overview', theme: 'default', icon: 'ph-chart-pie-slice',
     layout: [
       { type: 'net-worth', w: 4, h: 1 },
-      { type: 'cash-flow', w: 4, h: 1 },
+      { type: 'cash-flow', w: 4, h: 2 },
       { type: 'spending',  w: 4, h: 2 },
       { type: 'trend',     w: 4, h: 2 },
     ],
@@ -15,7 +15,7 @@ export const PREBUILT = [
   {
     id: 'spending', name: 'Spending focus', theme: 'ocean', icon: 'ph-shopping-cart',
     layout: [
-      { type: 'cash-flow', w: 4, h: 1 },
+      { type: 'cash-flow', w: 4, h: 2 },
       { type: 'spending',  w: 4, h: 3 },
       { type: 'savings',   w: 2, h: 1 },
       { type: 'accounts',  w: 2, h: 1 },
@@ -34,14 +34,14 @@ export const PREBUILT = [
     layout: [
       { type: 'by-person-spending', w: 4, h: 2 },
       { type: 'by-person-net',      w: 4, h: 1 },
-      { type: 'cash-flow',          w: 4, h: 1 },
+      { type: 'cash-flow',          w: 4, h: 2 },
     ],
   },
   {
     id: 'stocks', name: 'Stocks', theme: 'amber', icon: 'ph-trend-up',
     layout: [
       { type: 'portfolio',        w: 2, h: 1 },
-      { type: 'cash-vs-invested', w: 2, h: 1 },
+      { type: 'cash-vs-invested', w: 2, h: 2 },
       { type: 'holdings',         w: 4, h: 2 },
       { type: 'stock-movers',     w: 4, h: 2 },
     ],

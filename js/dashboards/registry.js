@@ -65,7 +65,7 @@ export const WIDGETS = {
   },
 
   'cash-flow': {
-    title: 'Cash Flow · this month', section: 'solo', minW: 2, minH: 1,
+    title: 'Cash Flow · this month', section: 'solo', minW: 2, minH: 2,   // 2×2 stat grid needs 2 rows
     desc: 'This month\'s income, expenses, net result and savings rate at a glance.',
     tags: ['card', 'spending', 'earnings', 'budget'],
     render(el, ctx) {
@@ -311,7 +311,7 @@ export const WIDGETS = {
   },
 
   'cash-vs-invested': {
-    title: 'Cash vs invested', section: 'solo', minW: 2, minH: 1,
+    title: 'Cash vs invested', section: 'solo', minW: 2, minH: 2,   // stats + bar + caption need 2 rows
     desc: 'How your net worth splits between account cash and portfolio value, with a proportion bar.',
     tags: ['card', 'accounts', 'stocks'],
     render(el, ctx) {
@@ -331,7 +331,7 @@ export const WIDGETS = {
   },
 
   'savings-goal': {
-    title: 'Savings goal', section: 'solo', minW: 2, minH: 1,
+    title: 'Savings goal', section: 'solo', minW: 2, minH: 2,   // value + track + caption need 2 rows
     desc: 'Progress toward a 20% savings-rate target, based on this month\'s income and expenses.',
     tags: ['gauge', 'budget'],
     render(el, ctx) {

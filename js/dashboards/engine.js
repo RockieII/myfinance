@@ -58,7 +58,9 @@ function normalize(layout, cols, rows) {
   const out = [];
   const occ = new Set();
   let cur = { x: 0, y: 0 };
-  let overflowed = false;
+  let overflowed = false;   // authored for a bigger board → edits persist into bp[cols]
+  let adjusted = false;     // stored sizes were clamped (e.g. a raised minW/minH) → reflow so
+                            // the upgraded widget can't overlap its neighbours
   for (const raw of layout) {
     const def = WIDGETS[raw.type] || { minW: 1, minH: 1 };
     const eff = raw.bp?.[cols] ?? raw;
@@ -67,6 +69,7 @@ function normalize(layout, cols, rows) {
     let x = eff.x, y = eff.y;
     if (Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0) {
       if (x + (eff.w || w) > cols || y + h > rows) overflowed = true; // stored for a bigger board
+      if ((eff.w && eff.w !== w) || (eff.h && eff.h !== h)) adjusted = true;
       x = Math.min(x, cols - w);
       y = Math.min(y, rows - h);
     } else {
@@ -76,7 +79,7 @@ function normalize(layout, cols, rows) {
     mark(occ, x, y, w, h);
     out.push({ id: raw.id, type: raw.type, x, y, w, h });
   }
-  return { items: overflowed ? reflowToBoard(out, cols, rows) : out, overflowed };
+  return { items: (overflowed || adjusted) ? reflowToBoard(out, cols, rows) : out, overflowed };
 }
 
 // Deterministic display-only reflow into a smaller board: (y,x) order, first-fit from origin.
